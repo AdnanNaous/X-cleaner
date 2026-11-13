@@ -12,7 +12,7 @@ Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extens
 
 ## Install and run
 
-The images below are annotated simulations of the Windows and Chrome screens. Interface layout may vary by browser and operating system.
+The images below use real Windows and Chrome screenshots with arrows and X Cleaner labels added. The layout may vary by browser and operating system.
 
 ### 1. Extract the ZIP
 
@@ -28,18 +28,20 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Open the extracted `X-Cleaner-1.4.0` folder. Check that `manifest.json` is directly inside it (1), then click **Select Folder** (2). The picker may hide individual files. If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.4.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
-![Folder selection example highlighting manifest.json and the Select Folder button](./docs/images/03-select-folder.png)
+![Chrome’s folder picker highlighting the entire X-Cleaner-1.4.0 folder and Select Folder](./docs/images/03-select-folder.png)
 
 ### 4. Open X Cleaner on X
 
-1. Sign in at [x.com](https://x.com). On that tab, open **Extensions → X Cleaner** (1). You can pin it for faster access.
-2. Check that the displayed handle is yours (2), and select the activity types you want to clean.
-3. Choose **Preview route** (3) to scan without removing anything.
-4. Choose **Clean selected** or **Clean everything** (4) to remove the selected activity. Deletions are permanent. Keep the cleanup tab open and use **Stop cleanup** if you need to stop the run.
+1. Sign in at [x.com](https://x.com). On that tab, click the **Extensions** icon (1) and choose **X Cleaner** (2). You can pin it for faster access.
+2. In the X Cleaner popup, check your displayed handle and select what to clean.
+3. Choose **Preview route** to scan without removing anything.
+4. Choose **Clean selected** or **Clean everything** to remove the selected activity. Deletions are permanent. Keep the cleanup tab open and use **Stop cleanup** if you need to stop the run.
 
-![Simulated X Cleaner popup with arrows pointing to the Extensions menu, the detected account, Preview route and Clean everything](./docs/images/04-use.png)
+![Chrome Extensions menu showing where to open X Cleaner](./docs/images/04-use.png)
+
+Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-unzip-file-windows/), [Chrome for Developers](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), and [ViewGrip](https://www.viewgrip.net/help/how-to-install-viewgrip-extension-on-chrome).
 
 ## Browser compatibility
 
