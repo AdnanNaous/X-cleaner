@@ -1,8 +1,9 @@
 'use strict';
 
 const get = id => document.getElementById(id);
-const options = [...document.querySelectorAll('#options input')];
-const categories = { posts: [0, 1], reposts: [2], bookmarks: [3], likes: [4] };
+const options = [...document.querySelectorAll('#options input[type="checkbox"]')];
+const categories = { posts: 0, replies: 1, reposts: 2, bookmarks: 3, likes: 4 };
+const paceInput = get('pace');
 const countKeys = ['deleted', 'reposts', 'bookmarks', 'likes', 'skipped', 'errors'];
 const statuses = { running: 'Running', stopping: 'Stopping', paused: 'Paused', review: 'Needs review', finished: 'Complete', previewed: 'Preview ready' };
 let current;
@@ -10,6 +11,7 @@ let detection;
 let busy = false;
 let changed = false;
 let paceChanged = false;
+let reportReceived = false;
 
 async function request(type, fields) {
   const response = await chrome.runtime.sendMessage({ type, ...fields });
@@ -18,7 +20,12 @@ async function request(type, fields) {
 }
 
 function selection() {
-  return options.filter(box => box.checked).flatMap(box => categories[box.value]);
+  return options.filter(box => box.checked).map(box => categories[box.value]);
+}
+
+function enteredPace() {
+  const milliseconds = Math.round(paceInput.valueAsNumber * 1000);
+  return paceInput.validity.valid && Cleaner.validPace(milliseconds) ? milliseconds : null;
 }
 
 function renderCountdown() {
@@ -28,15 +35,16 @@ function renderCountdown() {
   if (seconds > 0) {
     timer.textContent = `Wait remaining: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
-  const disabled = busy || !detection?.handle || !selection().length || (current?.handle === detection?.handle && current?.ratePaused && seconds > 0);
-  get('start').disabled = disabled;
+  const rateHold = Boolean(current?.handle === detection?.handle && current?.ratePaused && seconds > 0);
+  const disabled = busy || !detection?.handle || !selection().length || rateHold;
+  get('start').disabled = disabled || enteredPace() === null;
   get('preview').disabled = disabled;
 }
 
 function render() {
   const active = ['running', 'stopping'].includes(current?.status);
   const selected = selection();
-  const same = String(selected) === String(current?.selected);
+  const same = Cleaner.sameSections(selected, current?.selected);
   const sameAccount = Boolean(detection?.handle && current?.handle === detection.handle);
   const report = active || sameAccount ? current : null;
   get('account').textContent = active && current.handle ? '@' + current.handle
@@ -47,6 +55,9 @@ function render() {
   const resumePreview = same && sameAccount && current?.preview && current?.status === 'paused';
   get('status').textContent = active && current.preview ? 'Previewing' : statuses[report?.status] || 'Ready';
   get('options').disabled = active || busy;
+  const invalidPace = enteredPace() === null;
+  paceInput.setAttribute('aria-invalid', String(invalidPace));
+  get('pace-error').hidden = !invalidPace;
   get('start').hidden = active;
   renderCountdown();
   get('start').textContent = resume ? 'Continue cleanup' : selected.length === 5 ? 'Clean everything' : 'Clean selected';
@@ -70,7 +81,7 @@ function render() {
   const lastUrl = link || latestIssue?.url || '';
   lastItem.hidden = !/^https:\/\/x\.com\/[a-z0-9_]{1,15}\/status\/\d+$/i.test(lastUrl);
   if (!lastItem.hidden) lastItem.href = lastUrl;
-  for (const key of countKeys) get(key).textContent = (report?.totals[key] || 0).toLocaleString();
+  for (const key of countKeys) get(key).textContent = (report?.totals?.[key] || 0).toLocaleString();
   if (report?.bookmarksCleared) get('bookmarks').textContent = 'All';
   renderRoute(same ? report : null, selected);
   renderEvents(report?.events || []);
@@ -130,12 +141,15 @@ function syncOptions() {
   const state = current;
   if (!state || (state.handle !== detection?.handle && !['running', 'stopping'].includes(state.status))) return;
   if (state.selected && !changed) {
-    for (const box of options) box.checked = categories[box.value].every(index => state.selected.includes(index));
+    for (const box of options) box.checked = state.selected.includes(categories[box.value]);
   }
-  if (state.pace && !paceChanged) get('pace').value = String(state.pace);
+  if (Cleaner.validPace(state.pace) && !paceChanged) paceInput.value = String(state.pace / 1000);
 }
 
-get('pace').addEventListener('change', () => { paceChanged = true; });
+paceInput.addEventListener('input', () => {
+  paceChanged = true;
+  render();
+});
 setInterval(renderCountdown, 1000);
 
 for (const box of options) box.addEventListener('change', () => {
@@ -144,10 +158,13 @@ for (const box of options) box.addEventListener('change', () => {
 });
 
 async function action(type, preview = false) {
+  const pace = enteredPace();
+  if (type === 'start' && !preview && pace === null) return;
   busy = true;
   render();
   try {
-    setState(await request(type, { selection: selection(), pace: Number(get('pace').value), preview, expectedHandle: detection?.handle }));
+    const fields = type === 'start' ? { selection: selection(), pace: pace ?? undefined, preview, expectedHandle: detection?.handle } : {};
+    setState(await request(type, fields));
     busy = false;
     render();
   } catch (error) {
@@ -164,12 +181,17 @@ get('start').addEventListener('click', () => action('start'));
 get('preview').addEventListener('click', () => action('start', true));
 get('stop').addEventListener('click', () => action('stop'));
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.report?.newValue) setState(changes.report.newValue);
+  if (area === 'local' && changes.report?.newValue) {
+    reportReceived = true;
+    setState(changes.report.newValue);
+  }
 });
 request('detect').then(result => { detection = result; syncOptions(); render(); }).catch(error => {
   detection = { reason: error.message };
   render();
 });
-request('status').then(setState).catch(error => {
-  get('message').textContent = error.message;
+request('status').then(state => {
+  if (!reportReceived) setState(state);
+}).catch(error => {
+  if (!reportReceived) get('message').textContent = error.message;
 });

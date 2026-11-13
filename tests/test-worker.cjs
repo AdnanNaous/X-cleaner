@@ -92,11 +92,13 @@ const end = async (h, job, result = 'clear') => {
   await h.tab(job, 'hello');
   assert.equal(await h.tab(job, 'begin', { item: candidate('delete', 20, 'someone') }), null);
   assert.equal(await h.tab(job, 'begin', { item: candidate('like') }), null);
+  assert.equal(job.pace, 15000);
+  assert.equal(await h.tab(job, 'begin', { item: candidate('repost') }), null);
   await transfer(h, job, 'delete', 100);
   job = await end(h, job);
-  await transfer(h, job, 'delete', 101);
-  job = await end(h, job);
   await transfer(h, job, 'repost', 102);
+  job = await end(h, job);
+  await transfer(h, job, 'delete', 101);
   job = await end(h, job);
   await transfer(h, job, 'bookmark', 103);
   job = await end(h, job);
@@ -107,10 +109,49 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(job.status, 'finished');
   assert.deepEqual(job.totals, { deleted: 2, reposts: 1, bookmarks: 1, likes: 1, skipped: 0, errors: 0 });
   assert.deepEqual(h.navigations.map(link => new URL(link).pathname), [
-    '/sample_user', '/sample_user/with_replies', '/sample_user/reposts', '/i/bookmarks', '/sample_user/likes',
-    '/sample_user', '/sample_user/with_replies', '/sample_user/reposts', '/i/bookmarks', '/sample_user/likes'
+    '/sample_user/with_replies', '/sample_user/reposts', '/sample_user', '/i/bookmarks', '/sample_user/likes',
+    '/sample_user/with_replies', '/sample_user/reposts', '/sample_user', '/i/bookmarks', '/sample_user/likes'
   ]);
   console.log('PASS all routes, ownership and tab binding, exact per-action counts, second pass');
+
+  for (const [section, pace, path] of [[1, 2000, '/sample_user/with_replies'], [0, 500, '/sample_user'], [0, 0, '/sample_user']]) {
+    const custom = harness();
+    job = await custom.popup('start', { selection: [section], pace });
+    assert.deepEqual(Array.from(job.selected), [section]);
+    assert.equal(new URL(custom.navigations.at(-1)).pathname, path);
+    await custom.tab(job, 'hello');
+    const first = candidate('delete', 50);
+    assert.ok((await custom.tab(job, 'begin', { item: first })).allowed);
+    await custom.tab(job, 'settled', { url: first.url, ok: true });
+    const next = candidate('delete', 51);
+    if (pace) {
+      assert.equal((await custom.tab(job, 'begin', { item: next })).wait, pace);
+      custom.tick(pace);
+    }
+    assert.ok((await custom.tab(job, 'begin', { item: next })).allowed);
+    await custom.popup('stop');
+    await custom.tab(job, 'settled', { url: next.url, cancelled: true });
+    const resumed = await custom.popup('start', { selection: [section] });
+    assert.equal(resumed.pace, pace);
+    assert.equal(resumed.totals.deleted, 1);
+  }
+  const invalid = harness();
+  for (const pace of [-1, 3600001, 0.5, Infinity, '2000', null]) {
+    await assert.rejects(invalid.popup('start', { selection: [1], pace }), /delay/);
+  }
+  assert.equal(invalid.navigations.length, 0);
+  const upgraded = harness();
+  const old = await upgraded.popup('start', { selection: [0, 1, 2] });
+  await upgraded.tab(old, 'hello');
+  await transfer(upgraded, old, 'delete', 58);
+  await upgraded.popup('stop');
+  upgraded.stores.session.job.selected = [0, 1, 2];
+  upgraded.stores.session.job.section = 0;
+  const migrated = await upgraded.popup('start', { selection: [0, 1, 2] });
+  assert.deepEqual(Array.from(migrated.selected), [1, 2, 0]);
+  assert.equal(migrated.section, 1);
+  assert.equal(migrated.totals.deleted, 1);
+  console.log('PASS Replies and Posts can run independently, short delays and zero survive resume, and old routes migrate');
 
   const p = harness();
   job = await p.popup('start', { selection: [4] });
@@ -164,7 +205,7 @@ const end = async (h, job, result = 'clear') => {
     batch.tick(pace.wait);
     if (state.refreshPending) {
       const samePage = await batch.popup('status');
-      assert.equal(samePage.section, 0);
+      assert.equal(samePage.section, 1);
       assert.equal(samePage.totals.deleted, index + 1);
     }
   }
@@ -190,7 +231,7 @@ const end = async (h, job, result = 'clear') => {
   assert.equal((await recover.popup('start', { selection: [0, 1] })).status, 'paused');
   recover.tick(300000);
   const continued = await recover.popup('start', { selection: [0, 1] });
-  assert.equal(continued.section, 1);
+  assert.equal(continued.section, 0);
   assert.equal(continued.status, 'running');
   assert.equal(continued.results.length, 1);
   console.log('PASS bounded timeline recovery, rate-limit hold, and resume from current section');
@@ -198,7 +239,6 @@ const end = async (h, job, result = 'clear') => {
 
   const route = harness();
   job = await route.popup('start', { selection: [0, 1, 2, 3, 4] });
-  job = await end(route, job);
   assert.equal(job.section, 1);
   const replies = 'https://x.com/sample_user/with_replies';
   const home = 'https://x.com/home';
@@ -227,6 +267,7 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(status.results.find(result => result.section === 1).status, 'review');
   assert.match(route.navigations.at(-1), /\/reposts$/);
   job = await end(route, status);
+  job = await end(route, job);
   assert.equal(job.section, 3);
   for (let retry = 0; retry < 3; retry++) status = await route.change(job, { url: home });
   assert.equal(status.history, true);
@@ -240,7 +281,6 @@ const end = async (h, job, result = 'clear') => {
 
   const refresh = harness();
   job = await refresh.popup('start', { selection: [0, 1, 2] });
-  job = await end(refresh, job);
   await refresh.tab(job, 'hello');
   refresh.setTab(job, { url: home });
   assert.equal((await refresh.tab(job, 'refresh', { mode: 'recovery', reason: 'Page issue' })).reloading, true);
@@ -323,7 +363,7 @@ const end = async (h, job, result = 'clear') => {
   await assert.rejects(identity.popup('start', { selection: [0, 1] }), /active account changed/i);
   job = await identity.popup('start', { selection: [0, 1], expectedHandle: 'second_user' });
   assert.equal(job.handle, 'second_user');
-  assert.equal(identity.navigations.at(-1), 'https://x.com/second_user');
+  assert.equal(identity.navigations.at(-1), 'https://x.com/second_user/with_replies');
   await identity.tab(job, 'hello');
   assert.equal(await identity.tab(job, 'begin', { item: candidate('delete') }), null);
   assert.ok((await identity.tab(job, 'begin', { item: candidate('delete', 5, 'second_user') })).allowed);

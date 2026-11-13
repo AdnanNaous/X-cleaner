@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Cleaner",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Clean up posts, replies, reposts, bookmarks and likes on X.",
   "minimum_chrome_version": "120",
   "permissions": ["storage"],

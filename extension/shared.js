@@ -3,10 +3,11 @@
 globalThis.Cleaner = Object.freeze({
   origin: 'https://x.com',
   defaultPace: 15000,
-  slowerPace: 30000,
+  maxPace: 3600000,
   batchSize: 6,
   batchRest: 45000,
   rateRest: 300000,
+  sectionOrder: [1, 2, 0, 3, 4],
   sections: [
     { name: 'Posts', suffix: '' },
     { name: 'Replies', suffix: '/with_replies' },
@@ -14,6 +15,13 @@ globalThis.Cleaner = Object.freeze({
     { name: 'Bookmarks', path: '/i/bookmarks' },
     { name: 'Likes', suffix: '/likes' }
   ],
+  validPace(pace) {
+    return Number.isSafeInteger(pace) && pace >= 0 && pace <= this.maxPace;
+  },
+  sameSections(left, right) {
+    return Array.isArray(left) && Array.isArray(right) &&
+      left.length === right.length && left.every(index => right.includes(index));
+  },
   normalizeHandle(handle) {
     return typeof handle === 'string' && /^[a-z0-9_]{1,15}$/i.test(handle)
       ? handle.toLowerCase() : null;

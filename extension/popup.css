@@ -19,7 +19,7 @@ legend { padding: 0; font-weight: 650; margin-bottom: 9px; }
 label { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 10px; border: 1px solid #4b4b4b; border-radius: 6px; cursor: pointer; }
 label:has(input:checked) { border-color: #939393; }
 fieldset:disabled label { cursor: default; color: #aaa; }
-input { accent-color: #fff; margin: 0; width: 14px; height: 14px; flex: none; }
+input[type="checkbox"] { accent-color: #fff; margin: 0; width: 14px; height: 14px; flex: none; }
 button { font: inherit; font-weight: 700; width: 100%; min-height: 43px; padding: 7px; border: 1px solid #fff; border-radius: 6px; color: #000; background: #fff; cursor: pointer; }
 button:hover:not(:disabled) { background: #dedede; }
 button:disabled { opacity: .54; cursor: default; }
@@ -40,7 +40,10 @@ dt { color: #c2c2c2; font-size: 10.5px; white-space: nowrap; }
 dd { font-size: 21px; font-weight: 670; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 
 label.pace { justify-content: space-between; margin-top: 8px; border-color: #4b4b4b; }
-select { font: inherit; color: #fff; background: #000; border: 1px solid #888; border-radius: 4px; padding: 4px 7px; }
+.pace-value { display: flex; align-items: center; gap: 6px; }
+#pace { width: 76px; padding: 4px 6px; font: inherit; color: inherit; background: #000; border: 1px solid #888; border-radius: 4px; }
+#pace[aria-invalid="true"] { border-color: #fff; }
+.field-error { margin: 6px 0 0; font-size: 12px; }
 #countdown, #problem { padding: 0 12px 9px; color: #d1d1d1; font-size: 12px; }
 #countdown { font-variant-numeric: tabular-nums; }
 

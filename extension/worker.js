@@ -100,7 +100,7 @@ function recordInterruptedAction(job, text) {
   job.totals.errors++;
   rememberFailure(job, job.pending);
   job.problem = { text, url: job.pending.url };
-  job.nextActionAt = Math.max(job.nextActionAt, Date.now() + (job.pace || Cleaner.defaultPace));
+  job.nextActionAt = Math.max(job.nextActionAt, Date.now() + (job.pace ?? Cleaner.defaultPace));
   job.pending = null;
 }
 
@@ -148,10 +148,11 @@ async function recoverRoute(job, url) {
 async function start(old, selection, pace, preview, accountHandle) {
   if (old?.status === 'running' || old?.status === 'stopping' ||
       (old?.handle === accountHandle && old.ratePaused && old.waitUntil > Date.now())) return old;
-  const selected = sections.map((_, index) => index).filter(index => selection?.includes(index));
-  if (!selected.length || selected.includes(0) !== selected.includes(1)) {
+  const selected = Cleaner.sectionOrder.filter(index => Array.isArray(selection) && selection.includes(index));
+  if (!selected.length) {
     throw new Error('Select at least one category.');
   }
+  if (!Cleaner.validPace(pace)) throw new Error('Enter a delay from 0 to 3600 seconds.');
   let tab;
   if (old?.handle === accountHandle && ['paused', 'review', 'finished', 'previewed'].includes(old.status)) {
     try {
@@ -164,19 +165,19 @@ async function start(old, selection, pace, preview, accountHandle) {
     }
   }
   if (!tab) tab = await chrome.tabs.create({ url: 'about:blank', active: true });
-  const keep = old?.handle === accountHandle && ['paused', 'review'].includes(old.status) && String(old.selected) === String(selected) &&
+  const keep = old?.handle === accountHandle && ['paused', 'review'].includes(old.status) && Cleaner.sameSections(old.selected, selected) &&
     Boolean(old.preview) === preview;
-  const resume = keep && old.status === 'paused' && selected.includes(old.section);
-  if (resume && old.pending) recordInterruptedAction(old, 'Chrome closed before the last action could be verified.');
+  const resume = keep && old.status === 'paused' && String(old.selected) === String(selected) && selected.includes(old.section);
+  if (keep && old.pending) recordInterruptedAction(old, 'Chrome closed before the last action could be verified.');
   const job = {
     id: crypto.randomUUID(), tabId: tab.id, status: 'running', selected, preview, handle: accountHandle,
-    itemFailures: resume ? old.itemFailures || {} : {},
-    bookmarkBulkTried: resume && Boolean(old.bookmarkBulkTried),
-    bookmarksCleared: resume && Boolean(old.bookmarksCleared),
+    itemFailures: keep && old.status === 'paused' ? old.itemFailures || {} : {},
+    bookmarkBulkTried: keep && Boolean(old.bookmarkBulkTried),
+    bookmarksCleared: keep && Boolean(old.bookmarksCleared),
     events: keep ? old.events || [] : [],
     section: resume ? old.section : selected[0], pass: resume ? old.pass : 1,
     documentId: null, pending: null, nextActionAt: old?.handle === accountHandle ? old.nextActionAt || 0 : 0,
-    pace: pace === Cleaner.slowerPace ? Cleaner.slowerPace : Cleaner.defaultPace,
+    pace,
     changes: resume ? old.changes : 0, results: resume ? old.results : [],
     totals: keep ? old.totals : { deleted: 0, reposts: 0, bookmarks: 0, likes: 0, skipped: 0, errors: 0 },
     message: '', problem: keep ? old.problem : null
@@ -289,7 +290,9 @@ async function handle(message, sender) {
     const old = await report(job, true);
     const previous = !job && ['running', 'stopping'].includes(old?.status)
       ? { ...old, status: 'paused' } : old;
-    return start(previous, message.selection, message.pace, message.preview === true, detected.handle);
+    const pace = message.pace === undefined ? (previous?.handle === detected.handle
+      ? previous.pace ?? Cleaner.defaultPace : Cleaner.defaultPace) : message.pace;
+    return start(previous, message.selection, pace, message.preview === true, detected.handle);
   }
   if (!job?.handle || !['running', 'stopping'].includes(job.status)) return null;
   const fromTab = sender.tab?.id === job.tabId && sender.frameId === 0;
@@ -342,7 +345,7 @@ async function handle(message, sender) {
     }
     if (message.sent || message.ok) job.batchActions++;
     if (job.pending.kind === 'bookmark-bulk' && message.ok) job.batchActions = 1;
-    job.nextActionAt = Date.now() + (job.pace || Cleaner.defaultPace);
+    job.nextActionAt = Date.now() + (job.pace ?? Cleaner.defaultPace);
     if (!job.refreshPending && job.batchActions >= Cleaner.batchSize) {
       job.refreshPending = true;
       addEvent(job, `${sections[job.section].name} · Break after six actions`);
@@ -370,8 +373,8 @@ async function handle(message, sender) {
   }
   if (message.type === 'begin' && !job.preview && !job.pending && validPending(message.item, job.handle)) {
     const target = message.item.kind;
-    const permitted = (target === 'delete' && job.selected.includes(0) && job.section <= 1) ||
-      (target === 'repost' && job.selected.includes(2) && job.section <= 2) ||
+    const permitted = (target === 'delete' && job.section <= 1 && job.selected.includes(job.section)) ||
+      (target === 'repost' && job.section === 2) ||
       (target === 'bookmark' && job.section === 3) ||
       (target === 'bookmark-bulk' && job.section === 3 && !job.bookmarkBulkTried &&
         Cleaner.route(sender.url) === Cleaner.route(Cleaner.sectionUrl(3))) || (target === 'like' && job.section === 4);

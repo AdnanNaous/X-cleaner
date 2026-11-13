@@ -16,6 +16,7 @@ const CANCEL = '[data-testid="confirmationSheetCancel"]';
 const RESULT_NOTICES = '[data-testid="toast"], [role="status"], [role="alert"]';
 const EMPTY = '[data-testid="emptyState"], [data-testid="empty_state_header_text"]';
 const NOTICES = '[data-testid="toast"], [data-testid="emptyState"], [role="alert"], [role="alertdialog"]';
+const REPLY = '[data-testid="replyingTo"], [data-testid="replyingToContext"], [dir="auto"]';
 
 class Element {
   constructor(innerText = '', href = '') {
@@ -88,7 +89,24 @@ function harness() {
   const foreign = h.card('Other', 1, 'caret');
   assert.equal(h.api.identify(foreign.article), null);
   const owned = h.card('sample_user', 2, 'caret');
+  assert.equal(h.api.identify(owned.article), null);
+  const marker = new Element('Replying to @other');
+  marker.ancestors.set(ARTICLE, owned.article);
+  marker.find.set('a[href]', [new Element('@other', 'https://x.com/other')]);
+  owned.article.find.set(REPLY, [marker]);
   assert.equal(h.api.identify(owned.article), 'delete');
+  h.job(0, [0]);
+  assert.equal(h.api.identify(owned.article), null);
+  const nonReplyContext = '[data-testid="tweetText"], [data-testid="User-Name"], [data-testid="UserName"], [data-testid="quoteTweet"], [data-testid="card.wrapper"]';
+  marker.ancestors.set(nonReplyContext, marker);
+  assert.equal(h.api.identify(owned.article), 'delete');
+  marker.ancestors.delete(nonReplyContext);
+  marker.innerText = 'ردًا على @other';
+  h.job(1, [1]);
+  assert.equal(h.api.identify(owned.article), 'delete');
+  const previousRepost = h.card('other', 8, 'unretweet', 'You reposted');
+  assert.equal(h.api.identify(previousRepost.article), null);
+  h.primary.find.set(ARTICLE, [owned.article]);
   h.profile.href = 'https://x.com/Other';
   assert.equal(h.api.account(), 'mismatch');
   assert.equal(await h.api.apply({ ...h.api.parseCard(owned.article), kind: 'delete' }), 'deferred');

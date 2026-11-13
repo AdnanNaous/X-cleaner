@@ -1,15 +1,16 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner.zip.
+1. Extract X-Cleaner-1.5.0.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the extracted X-Cleaner folder. It contains manifest.json directly.
+4. Select the entire extracted X-Cleaner-1.5.0 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
 Sign in to x.com, then open X Cleaner from that tab. Check the account
-shown in the popup. Leave all categories selected for a full cleanup, or uncheck the categories you want to keep.
+shown in the popup. Choose one or more categories. The route runs in this
+order: Replies, Reposts, Posts, Bookmarks, Likes. It skips unchecked categories.
 Click Preview route to count items without removing them. The same post or
 repost can appear in multiple sections, so each count applies to its own
 section. Click Clean everything or Clean selected once to remove items. The extension creates a
@@ -35,7 +36,8 @@ selected sections finish their verification scan without unresolved items.
 COVERAGE AND ACCOUNT
 Deletion is permanent. The extension can only process items X exposes in
 the selected timelines. Older or unavailable items may not be discoverable
-in those timelines. Choose a 15- or 30-second minimum wait between actions.
+in those timelines. The delay defaults to 15 seconds. Enter 0 to 3600 seconds,
+including decimals like 0.5. At 0, verification still runs after each action.
 After six actions in a section, X Cleaner waits at least 45 seconds and
 continues in the same page. It refreshes when checking the end of a timeline
 or recovering from a loading error. Items that fail twice are left for review

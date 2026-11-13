@@ -119,7 +119,7 @@
 
   function getHistoryTab() {
     const matches = all(primary(), '[role="tab"], [role="tablist"] a').filter(tab =>
-      historyLabels[job.section]?.has(normalize(tab.innerText)));
+      labelled(tab, historyLabels[job.section]));
     return matches.length === 1 ? matches[0] : null;
   }
 
@@ -173,14 +173,24 @@
       selectedTab(tab) && Cleaner.route(tab.href) === expected);
   }
 
+  function markedReply(card) {
+    return all(card, '[data-testid="replyingTo"], [data-testid="replyingToContext"], [dir="auto"]')
+      .some(node => node.closest(ARTICLE) === card &&
+        !node.closest('[data-testid="tweetText"], [data-testid="User-Name"], [data-testid="UserName"], [data-testid="quoteTweet"], [data-testid="card.wrapper"]') &&
+        (['replyingTo', 'replyingToContext'].includes(node.getAttribute('data-testid')) ||
+          (/^(?:replying to|رد(?:ً?ا|ّ)? على)(?:\s|$)/.test(normalize(node.innerText)) &&
+            all(node, 'a[href]').some(link => profileHandle(link.href)))));
+  }
+
   function identify(card, data = parseCard(card)) {
     if (!data) return null;
     if (job.section === 3) return owned(card, '[data-testid="removeBookmark"]') ? 'bookmark' : null;
     if (job.section === 4) return owned(card, '[data-testid="unlike"]') ? 'like' : null;
-    const undo = repostedHere(card) && owned(card, '[data-testid="unretweet"]');
-    if (undo) return job.selected.includes(2) ? 'repost' : null;
-    // A pinned card or another placement marker can still carry one of the account's own posts.
-    if (data.author === job.handle && job.section <= 1 && !repostLabels.has(socialContext(card))) return 'delete';
+    if (job.section === 2) {
+      return repostedHere(card) && owned(card, '[data-testid="unretweet"]') ? 'repost' : null;
+    }
+    if (data.author === job.handle && job.section <= 1 &&
+        !repostLabels.has(socialContext(card)) && markedReply(card) === (job.section === 1)) return 'delete';
     return null;
   }
 
@@ -327,7 +337,8 @@
       route.hidden = !route.textContent;
       description.textContent = state.message;
       const { deleted, reposts, bookmarks, likes, skipped, errors } = state.totals;
-      counts.textContent = state.preview ? 'Scan only' : `${deleted} deleted · ${reposts} reposts · ${bookmarks} bookmarks · ${likes} likes · ${skipped} skipped · ${errors} errors`;
+      const bookmarkCount = state.bookmarksCleared ? 'All' : bookmarks;
+      counts.textContent = state.preview ? 'Scan only' : `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} skipped · ${errors} errors`;
     };
   }
 
@@ -499,6 +510,7 @@
     let ok = false;
     let dialog;
     try {
+      if (!routeAndAccount()) return;
       button.click();
       const clear = await waitFor(() =>
         menuItem('[role="menuitem"], [data-testid="clearAllBookmarks"], [data-testid="clearBookmarks"]', clearLabels), 2500);
@@ -537,6 +549,7 @@
           url: bulk.url, ok, sent, cancelled: cancelled && !sent,
           issue: 'The bulk bookmark clear could not be verified. Checking bookmarks individually.'
         });
+        batchDue = Boolean(state?.refreshPending);
         nextActionAt = state?.nextActionAt || 0;
       }
     }
@@ -727,16 +740,12 @@
       if (retry?.reloading) return;
     } else if (removed.size) {
       await update(`${name} · Waiting to check for older items`, true);
-      if (await waitUntil(nextActionAt)) {
-        const refresh = await ask('refresh', { mode: 'tail' });
-        if (refresh?.reloading) return;
-      }
-      if (cancelled) return;
-      const blocked = restriction();
-      if (blocked) {
-        await ask('pause', blocked);
+      if (!await waitUntil(nextActionAt)) {
+        if (!cancelled) await reportLostView();
         return;
       }
+      const refresh = await ask('refresh', { mode: 'tail' });
+      if (refresh?.reloading || cancelled) return;
     }
     if (!detail && failures.size) detail = `${failures.size} item(s) could not be verified. ${lastIssue}`.trim();
     if (!detail && ambiguous.size) detail = `${ambiguous.size} card(s) lacked a recognizable action or permalink.`;
@@ -768,8 +777,9 @@
     observer = (changes, area) => {
       if (area !== 'local') return;
       const state = changes.report?.newValue;
+      cancelled ||= state?.id !== job.id || state.status !== 'running' ||
+        state.section !== job.section || state.pass !== job.pass;
       if (state?.id !== job.id) return;
-      cancelled ||= state.status !== 'running' || state.section !== job.section || state.pass !== job.pass;
       paint(state);
     };
     chrome.storage.onChanged.addListener(observer);

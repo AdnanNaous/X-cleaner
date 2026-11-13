@@ -19,17 +19,17 @@
     <fieldset id="options">
       <legend>What to clean</legend>
       <div class="options">
-        <label><input type="checkbox" value="posts" checked>Posts &amp; replies</label>
+        <label><input type="checkbox" value="replies" checked>Replies</label>
         <label><input type="checkbox" value="reposts" checked>Reposts</label>
+        <label><input type="checkbox" value="posts" checked>Posts</label>
         <label><input type="checkbox" value="bookmarks" checked>Bookmarks</label>
         <label><input type="checkbox" value="likes" checked>Likes</label>
       </div>
-      <label class="pace" for="pace">Pace
-        <select id="pace">
-          <option value="15000">Gentle · 15 seconds</option>
-          <option value="30000">Slower · 30 seconds</option>
-        </select>
+      <label class="pace" for="pace">
+        <span>Delay between actions</span>
+        <span class="pace-value"><input id="pace" type="number" inputmode="decimal" min="0" max="3600" step="0.001" value="15" required aria-label="Delay between actions in seconds" aria-describedby="pace-error"> <span aria-hidden="true">sec</span></span>
       </label>
+      <p id="pace-error" class="field-error" hidden>Enter 0–3600 seconds, with up to 3 decimal places.</p>
     </fieldset>
 
     <button type="button" id="open-x" hidden>Open X</button>
