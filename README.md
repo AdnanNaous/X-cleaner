@@ -6,9 +6,9 @@
 
 Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.0.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.1.zip?raw=true)
 
-**Version 1.6.0 · ZIP · Manual installation on desktop Chromium browsers**
+**Version 1.6.1 · ZIP · Manual installation on desktop Chromium browsers**
 
 ## Install and run
 
@@ -16,7 +16,7 @@ The images below use real Windows and Chrome screenshots with arrows and X Clean
 
 ### 1. Extract the ZIP
 
-On Windows, right-click `X-Cleaner-1.6.0.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+On Windows, right-click `X-Cleaner-1.6.1.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
 
 ![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
 
@@ -28,7 +28,7 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Select the entire extracted **X-Cleaner-1.6.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.6.1** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
 ![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
 

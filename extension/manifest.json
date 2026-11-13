@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Cleaner",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Clean up posts, replies, reposts, bookmarks and likes on X.",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -17,9 +17,10 @@
     "default_title": "X Cleaner",
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/16.png",
-      "32": "icons/32.png",
-      "48": "icons/48.png"
+      "16": "icons/toolbar-16.png",
+      "24": "icons/toolbar-24.png",
+      "32": "icons/toolbar-32.png",
+      "48": "icons/toolbar-48.png"
     }
   },
   "icons": {

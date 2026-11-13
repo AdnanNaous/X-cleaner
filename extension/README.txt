@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.6.0.zip.
+1. Extract X-Cleaner-1.6.1.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.6.0 folder.
+4. Select the entire extracted X-Cleaner-1.6.1 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
