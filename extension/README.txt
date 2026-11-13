@@ -1,0 +1,51 @@
+X Cleaner
+
+INSTALL ON CHROME
+1. Extract X-Cleaner.zip.
+2. In Chrome, enter chrome://extensions in the address bar.
+3. Turn on Developer mode and choose Load unpacked.
+4. Select the extracted X-Cleaner folder. It contains manifest.json directly.
+5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
+
+RUN
+Sign in to x.com, then open X Cleaner from that tab. Check the account
+shown in the popup. Leave all categories selected for a full cleanup, or uncheck the categories you want to keep.
+Click Preview route to count items without removing them. The same post or
+repost can appear in multiple sections, so each count applies to its own
+section. Click Clean everything or Clean selected once to remove items. The extension creates a
+dedicated X tab, visits the selected sections, and rechecks them. The popup
+shows the route, the current section, and sections that need review. If X
+sends the tab to Home, X Cleaner reopens the intended section up to twice.
+Bookmarks and Likes can also use History. If the section stays unavailable,
+the route continues with the next selected section. Leave that
+tab open and use another tab while it runs. Stop is available in the extension
+popup and in the progress panel on the cleanup tab. If X has already received
+the current request, it may still finish. Continue cleanup resumes the
+interrupted section when the selected categories match.
+
+RESULTS
+Deleted covers posts, replies and quote posts authored by the detected account. Reposts
+are undone using the original post's X control. Bookmarks and likes are
+removed from your account. Skipped cards counts encounters with non-target
+or unrecognized cards per scan, such as other people's posts shown above a
+reply. Action errors count attempts the extension could not verify. The
+popup lists sections that need review. The achievement appears when all
+selected sections finish their verification scan without unresolved items.
+
+COVERAGE AND ACCOUNT
+Deletion is permanent. The extension can only process items X exposes in
+the selected timelines. Older or unavailable items may not be discoverable
+in those timelines. Choose a 15- or 30-second minimum wait between actions.
+After six actions in a section, X Cleaner waits at least 45 seconds and
+continues in the same page. It refreshes when checking the end of a timeline
+or recovering from a loading error. Items that fail twice are left for review
+while the rest of the route continues. If X exposes its built-in Clear all
+Bookmarks command, X Cleaner checks for the empty list before reporting All.
+Temporary timeline failures get two paced recovery
+attempts. X rate limits and account challenges pause cleanup and need a
+manual restart from the popup when X is ready again.
+X prohibits scripting its website and can restrict accounts. No pace can
+guarantee against enforcement. See https://help.x.com/en/rules-and-policies/x-automation
+
+The extension uses your existing X session. It does not request passwords,
+tokens, or cookies. Status and totals are stored locally in Chrome.

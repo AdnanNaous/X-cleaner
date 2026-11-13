@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Cleaner</title>
+  <link rel="stylesheet" href="popup.css">
+  <script defer src="shared.js"></script>
+  <script defer src="popup.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="icons/48.png" width="38" height="38" alt="">
+      <div><h1>X Cleaner</h1><p class="account" id="account">Detecting account…</p></div>
+      <span id="status" class="status">Ready</span>
+    </header>
+
+    <fieldset id="options">
+      <legend>What to clean</legend>
+      <div class="options">
+        <label><input type="checkbox" value="posts" checked>Posts &amp; replies</label>
+        <label><input type="checkbox" value="reposts" checked>Reposts</label>
+        <label><input type="checkbox" value="bookmarks" checked>Bookmarks</label>
+        <label><input type="checkbox" value="likes" checked>Likes</label>
+      </div>
+      <label class="pace" for="pace">Pace
+        <select id="pace">
+          <option value="15000">Gentle · 15 seconds</option>
+          <option value="30000">Slower · 30 seconds</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <button type="button" id="open-x" hidden>Open X</button>
+    <button type="button" id="start" disabled>Clean everything</button>
+    <button type="button" id="preview" disabled>Preview route</button>
+    <button type="button" id="stop" hidden>Stop cleanup</button>
+    <p class="warning" id="warning">Permanently removes the selected activity.</p>
+
+    <section id="achievement" hidden aria-label="Cleanup achievement">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 3h8v6a4 4 0 0 1-8 0V3ZM8 5H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v5m-4 3h8m-7 0 1-3h4l1 3"/>
+      </svg>
+      <div><strong>Cleanup complete</strong><p>All selected sections rechecked.</p></div>
+    </section>
+
+    <section class="route" aria-labelledby="route-title">
+      <div class="route-heading"><h2 id="route-title">Cleanup route</h2><span id="route-pass"></span></div>
+      <ol id="route-list"></ol>
+    </section>
+
+    <section class="activity" aria-label="Cleanup progress">
+      <p id="message" role="status">Ready to scan your X account.</p>
+      <p id="countdown" hidden></p>
+      <p id="problem" hidden></p>
+      <a id="last-item" hidden target="_blank" rel="noreferrer">Open last attempted item</a>
+      <dl class="stats">
+        <div><dt>Deleted</dt><dd id="deleted">0</dd></div>
+        <div><dt>Reposts undone</dt><dd id="reposts">0</dd></div>
+        <div><dt>Bookmarks removed</dt><dd id="bookmarks">0</dd></div>
+        <div><dt>Likes removed</dt><dd id="likes">0</dd></div>
+        <div><dt>Skipped cards</dt><dd id="skipped">0</dd></div>
+        <div><dt>Action errors</dt><dd id="errors">0</dd></div>
+      </dl>
+    </section>
+    <details id="events" hidden>
+      <summary>Recent activity</summary>
+      <ul id="event-list"></ul>
+    </details>
+  </main>
+</body>
+</html>
