@@ -31,12 +31,17 @@ function enteredPace() {
 function renderCountdown() {
   const seconds = Math.ceil(((current?.waitUntil || 0) - Date.now()) / 1000);
   const timer = get('countdown');
-  timer.hidden = seconds <= 0 || (current?.status === 'paused' && current?.handle !== detection?.handle);
+  timer.hidden = seconds <= 0 || (current?.status === 'paused' && detection?.handle && current.handle !== detection.handle);
   if (seconds > 0) {
     timer.textContent = `Wait remaining: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
+  const pausedForX = current?.status === 'paused' && current?.pausedAt && ['x', 'rate-limit'].includes(current.pauseKind) &&
+    (!detection?.handle || current.handle === detection.handle);
+  const elapsed = get('elapsed');
+  elapsed.hidden = !pausedForX;
+  elapsed.textContent = pausedForX ? 'Paused for ' + Cleaner.elapsedSince(current.pausedAt) : '';
   const rateHold = Boolean(current?.handle === detection?.handle && current?.ratePaused && seconds > 0);
-  const disabled = busy || !detection?.handle || !selection().length || rateHold;
+  const disabled = busy || !detection?.handle || !selection().length || rateHold || Boolean(current?.alertPending);
   get('start').disabled = disabled || enteredPace() === null;
   get('preview').disabled = disabled;
 }
@@ -46,13 +51,13 @@ function render() {
   const selected = selection();
   const same = Cleaner.sameSections(selected, current?.selected);
   const sameAccount = Boolean(detection?.handle && current?.handle === detection.handle);
-  const report = active || sameAccount ? current : null;
+  const report = active || sameAccount || current?.alertPending || (!detection?.handle && current?.status === 'paused') ? current : null;
   get('account').textContent = active && current.handle ? '@' + current.handle
     : detection?.handle ? '@' + detection.handle : 'Account not detected';
   get('open-x').hidden = active || !detection || Boolean(detection.handle) ||
     !detection.reason?.startsWith('Open');
   const resume = same && sameAccount && !current?.preview && ['paused', 'review'].includes(current?.status);
-  const resumePreview = same && sameAccount && current?.preview && current?.status === 'paused';
+  const resumePreview = same && sameAccount && current?.preview && ['paused', 'review'].includes(current.status);
   get('status').textContent = active && current.preview ? 'Previewing' : statuses[report?.status] || 'Ready';
   get('options').disabled = active || busy;
   const invalidPace = enteredPace() === null;
@@ -60,9 +65,9 @@ function render() {
   get('pace-error').hidden = !invalidPace;
   get('start').hidden = active;
   renderCountdown();
-  get('start').textContent = resume ? 'Continue cleanup' : selected.length === 5 ? 'Clean everything' : 'Clean selected';
+  get('start').textContent = resume ? (current.status === 'review' ? 'Retry cleanup' : 'Continue cleanup') : selected.length === 5 ? 'Clean everything' : 'Clean selected';
   get('preview').hidden = active;
-  get('preview').textContent = resumePreview ? 'Continue preview' : 'Preview route';
+  get('preview').textContent = resumePreview ? (current.status === 'review' ? 'Retry preview' : 'Continue preview') : 'Preview route';
   get('stop').hidden = !active;
   get('stop').textContent = current?.preview ? 'Stop preview' : 'Stop cleanup';
   get('stop').disabled = busy || current?.status === 'stopping';
@@ -73,6 +78,11 @@ function render() {
   const messageText = report?.message;
   const [message, link] = (messageText || detection?.reason || 'Ready to scan your X account.').split(' Check the last attempted item: ');
   get('message').textContent = message;
+  get('interruption').hidden = !report?.alertPending;
+  get('interrupt-title').textContent = report?.preview ? 'Preview stopped' : 'Cleanup stopped';
+  get('interrupt-reason').textContent = report?.alertPending ? message : '';
+  get('acknowledge').disabled = busy;
+  get('message').hidden = Boolean(report?.alertPending);
   const problem = get('problem');
   const latestIssue = report?.problem;
   problem.hidden = !latestIssue?.text;
@@ -159,18 +169,18 @@ for (const box of options) box.addEventListener('change', () => {
 
 async function action(type, preview = false) {
   const pace = enteredPace();
-  if (type === 'start' && !preview && pace === null) return;
+  if (type === 'start' && (current?.alertPending || (!preview && pace === null))) return;
   busy = true;
   render();
   try {
-    const fields = type === 'start' ? { selection: selection(), pace: pace ?? undefined, preview, expectedHandle: detection?.handle } : {};
+    const fields = type === 'start' ? { selection: selection(), pace: pace ?? undefined, preview, expectedHandle: detection?.handle } : type === 'acknowledge' ? { id: current?.id } : {};
     setState(await request(type, fields));
     busy = false;
     render();
   } catch (error) {
     busy = false;
     render();
-    get('message').textContent = error.message || 'Reopen X Cleaner and try again.';
+    get(current?.alertPending ? 'interrupt-reason' : 'message').textContent = error.message || 'Reopen X Cleaner and try again.';
   }
 }
 
@@ -180,6 +190,7 @@ get('open-x').addEventListener('click', () => request('openX').catch(error => {
 get('start').addEventListener('click', () => action('start'));
 get('preview').addEventListener('click', () => action('start', true));
 get('stop').addEventListener('click', () => action('stop'));
+get('acknowledge').addEventListener('click', () => action('acknowledge'));
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.report?.newValue) {
     reportReceived = true;

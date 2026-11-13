@@ -6,6 +6,7 @@ const MAX_PASSES = 4;
 const STORAGE = 'job';
 const MAX_ITEM_ATTEMPTS = 2;
 let queue = Promise.resolve();
+let badgeText;
 
 function serial(operation) {
   const response = queue.then(operation);
@@ -36,24 +37,40 @@ function addEvent(job, text) {
 function rememberFailure(job, item) {
   const failed = job.itemFailures ||= {};
   const key = itemKey(item);
-  failed[key] = (failed[key] || 0) + 1;
+  const previous = failed[key];
+  const attempts = (typeof previous === 'number' ? previous : previous?.attempts || 0) + 1;
+  failed[key] = { attempts, retryAt: Date.now() + Cleaner.itemRetryRest };
+  return attempts;
 }
 
 async function write(job) {
   job.revision = (job.revision || 0) + 1;
   await chrome.storage.session.set({ [STORAGE]: job });
-  const { documentId, pending, itemFailures, ...snapshot } = job;
-  await chrome.storage.local.set({ report: snapshot, checkpoint: { pending, itemFailures } });
+  const { documentId, pending, itemFailures, confirmed, ...snapshot } = job;
+  await chrome.storage.local.set({ report: snapshot, checkpoint: { pending, itemFailures, confirmed } });
+  const text = job.alertPending ? '!' : '';
+  if (chrome.action && badgeText !== text) {
+    try {
+      await chrome.action.setBadgeText({ text });
+      badgeText = text;
+    } catch (error) {
+      console.warn('Could not update the X Cleaner badge.', error);
+    }
+  }
 }
 
-async function pause(job, reason, rateLimited = false) {
+async function pause(job, reason, kind = 'issue') {
   if (job.pending) {
-    rememberFailure(job, job.pending);
-    reason += ` Check the last attempted item: ${job.pending.url}`;
+    const url = job.pending.url;
+    recordInterruptedAction(job, 'The last action was interrupted before X confirmed it.');
+    reason += ` Check the last attempted item: ${url}`;
   }
   job.status = 'paused';
-  job.waitUntil = rateLimited ? Date.now() + Cleaner.rateRest : 0;
-  job.ratePaused = rateLimited;
+  job.pauseKind = kind;
+  job.alertPending = kind !== 'manual';
+  job.pausedAt = Date.now();
+  job.ratePaused = kind === 'rate-limit';
+  job.waitUntil = job.ratePaused ? job.pausedAt + Cleaner.rateRest : 0;
   job.message = reason;
   addEvent(job, reason);
   job.documentId = null;
@@ -69,11 +86,12 @@ function atSection(job, url) {
 async function navigate(job, { refresh = false } = {}) {
   const target = Cleaner.sectionTarget(job.section, job.handle, job.history);
   job.documentId = null;
+  job.refreshAt = Date.now() + Cleaner.refreshInterval;
   await write(job);
   try {
     const tab = await chrome.tabs.get(job.tabId);
-    if (refresh && atSection(job, tab.url) && (!tab.pendingUrl || atSection(job, tab.pendingUrl))) {
-      await chrome.tabs.reload(job.tabId);
+    if (refresh && atSection(job, tab.url) && !tab.pendingUrl) {
+      await chrome.tabs.reload(job.tabId, { bypassCache: true });
     } else {
       await chrome.tabs.update(job.tabId, { url: target });
     }
@@ -87,6 +105,7 @@ async function openSection(job) {
   job.skippedHere = 0;
   job.batchActions = 0;
   job.recoveries = 0;
+  job.itemsRechecked = false;
   job.redirects = 0;
   job.refreshPending = false;
   job.waitUntil = 0;
@@ -116,12 +135,12 @@ async function recoverRoute(job, url) {
   const name = sections[job.section].name;
   const destination = path === '/home' || path === '' ? 'Home' : path;
   if (job.status === 'stopping') {
-    await pause(job, 'Stopped while the X page was changing.');
+    await pause(job, 'Stopped while the X page was changing.', 'manual');
     return;
   }
   if (path === null || /^\/(?:login|logout|account\/(?:access|suspended)|i\/flow\/(?:challenge|verify|login|signup))(?:\/|$)/.test(path)) {
     await pause(job, path === null ? 'The cleanup tab left x.com. Continue cleanup to reopen your profile.'
-      : 'X requires sign-in or an account check. Resolve it on X, then continue.');
+      : 'X requires sign-in or an account check. Resolve it on X, then continue.', path === null ? 'issue' : 'x');
     return;
   }
 
@@ -142,12 +161,12 @@ async function recoverRoute(job, url) {
     await openHistory(job);
     return;
   }
-  await finishSection(job, { result: 'review', detail: detail + ' The redirect persisted after two retries.' });
+  await pause(job, detail + ' The redirect persisted after two retries. Try again later.', 'x');
 }
 
 async function start(old, selection, pace, preview, accountHandle) {
   if (old?.status === 'running' || old?.status === 'stopping' ||
-      (old?.handle === accountHandle && old.ratePaused && old.waitUntil > Date.now())) return old;
+      old?.alertPending || (old?.handle === accountHandle && old.ratePaused && old.waitUntil > Date.now())) return old;
   const selected = Cleaner.sectionOrder.filter(index => Array.isArray(selection) && selection.includes(index));
   if (!selected.length) {
     throw new Error('Select at least one category.');
@@ -172,6 +191,9 @@ async function start(old, selection, pace, preview, accountHandle) {
   const job = {
     id: crypto.randomUUID(), tabId: tab.id, status: 'running', selected, preview, handle: accountHandle,
     itemFailures: keep && old.status === 'paused' ? old.itemFailures || {} : {},
+    confirmed: keep && old.status === 'review'
+      ? Object.fromEntries(Object.keys(old.confirmed || {}).map(key => [key, 1]))
+      : keep ? old.confirmed || {} : {},
     bookmarkBulkTried: keep && Boolean(old.bookmarkBulkTried),
     bookmarksCleared: keep && Boolean(old.bookmarksCleared),
     events: keep ? old.events || [] : [],
@@ -210,37 +232,53 @@ async function finishSection(job, message) {
     return;
   }
   const unresolved = job.changes > 0 || job.results.some(result => result.status !== 'clear');
-  job.status = job.preview ? 'previewed' : unresolved ? 'review' : 'finished';
+  job.status = unresolved ? 'review' : job.preview ? 'previewed' : 'finished';
+  job.alertPending = unresolved;
   job.waitUntil = 0;
   if (!unresolved) job.problem = null;
   job.documentId = null;
-  job.message = job.preview
-    ? 'Preview complete. Counts reflect the items X exposed during this scan.'
-    : unresolved
-    ? 'The route finished with items or sections to review.'
-    : 'No more eligible items surfaced in the selected sections.';
+  job.message = unresolved
+    ? `${job.preview ? 'Preview' : 'Cleanup'} stopped with items or sections to review. Check the details and retry when X is ready.`
+    : job.preview ? 'Preview complete. Counts reflect the items X exposed during this scan.'
+      : 'No more eligible items surfaced in the selected sections.';
   await write(job);
 }
 
 async function refreshSection(job, message) {
   const mode = message.mode;
   if (mode === 'tail' && !job.batchActions) return null;
+  if (mode === 'items' && (job.preview || job.itemsRechecked)) return { exhausted: true };
+  if (mode === 'periodic' && (!job.refreshAt || Date.now() < job.refreshAt)) return null;
   if (mode === 'recovery' && job.recoveries >= 2) return { exhausted: true };
-  if (!['tail', 'recovery'].includes(mode)) return null;
+  if (!['tail', 'items', 'periodic', 'recovery'].includes(mode)) return null;
 
   const reason = String(message.reason || '').slice(0, 180);
   if (mode === 'recovery') {
     job.recoveries++;
     job.nextActionAt = Math.max(job.nextActionAt, Date.now() + 30000 * job.recoveries);
-    job.problem ||= { text: reason };
+    job.problem = { text: reason, url: job.problem?.url };
     addEvent(job, `${sections[job.section].name} · Retry ${job.recoveries}/2 · ${reason}`);
+  } else if (mode === 'items') {
+    job.itemsRechecked = true;
+    job.nextActionAt = Math.max(job.nextActionAt, Date.now() + Cleaner.itemRetryRest);
+    addEvent(job, `${sections[job.section].name} · Rechecking deferred items`);
+  } else if (mode === 'periodic') {
+    addEvent(job, `${sections[job.section].name} · Scheduled 10-minute refresh`);
   }
-  job.batchActions = 0;
-  job.refreshPending = false;
+  if (mode !== 'periodic') {
+    job.batchActions = 0;
+    job.refreshPending = false;
+  }
   job.skippedHere = 0;
   job.waitUntil = job.nextActionAt;
-  job.message = mode === 'recovery' ? `Retrying ${sections[job.section].name} after an X page issue.`
-    : `Taking a break, then checking for more ${sections[job.section].name.toLowerCase()}.`;
+  const name = sections[job.section].name;
+  const messages = {
+    recovery: `Retrying ${name} after an X page issue.`,
+    items: `${name} · Waiting 30 seconds or longer before checking deferred items.`,
+    periodic: `${name} · Refreshing the timeline and resuming where cleanup left off.`,
+    tail: `${name} · Checking for more items after a break.`
+  };
+  job.message = messages[mode];
   await navigate(job, { refresh: true });
   return { reloading: job.status === 'running' };
 }
@@ -268,17 +306,25 @@ async function handle(message, sender) {
   const job = await read();
   const fromPopup = sender.url === chrome.runtime.getURL('popup.html');
   if (fromPopup && message.type === 'status') {
-    const saved = await report(job);
+    const saved = await report(job, !job);
     if (!saved?.handle) return null;
     if (!job && ['running', 'stopping'].includes(saved?.status)) {
-      return { ...saved, status: 'paused', message: 'Cleanup was interrupted. Continue to resume the section.' };
+      return pause(saved, 'Cleanup was interrupted. When X is ready, choose Continue cleanup.');
     }
-    return saved;
+    return job || await report(null);
   }
   if (fromPopup && message.type === 'detect') return detectAccount();
   if (fromPopup && message.type === 'openX') {
     await chrome.tabs.create({ url: Cleaner.origin, active: true });
     return null;
+  }
+  if (message.type === 'acknowledge') {
+    const saved = await report(job, true);
+    const fromCleanupTab = saved && sender.tab?.id === saved.tabId && sender.frameId === 0;
+    if (!saved?.alertPending || saved.id !== message.id || !(fromPopup || fromCleanupTab)) return null;
+    saved.alertPending = false;
+    await write(saved);
+    return saved;
   }
   if (fromPopup && message.type === 'start') {
     if (job?.handle && ['running', 'stopping'].includes(job.status)) return job;
@@ -289,16 +335,18 @@ async function handle(message, sender) {
     }
     const old = await report(job, true);
     const previous = !job && ['running', 'stopping'].includes(old?.status)
-      ? { ...old, status: 'paused' } : old;
+      ? await pause(old, 'Cleanup was interrupted. When X is ready, choose Continue cleanup.') : old;
     const pace = message.pace === undefined ? (previous?.handle === detected.handle
       ? previous.pace ?? Cleaner.defaultPace : Cleaner.defaultPace) : message.pace;
     return start(previous, message.selection, pace, message.preview === true, detected.handle);
   }
-  if (!job?.handle || !['running', 'stopping'].includes(job.status)) return null;
+  if (!job?.handle) return null;
   const fromTab = sender.tab?.id === job.tabId && sender.frameId === 0;
+  if (fromTab && message.type === 'hello' && job.alertPending) return job;
+  if (!['running', 'stopping'].includes(job.status)) return null;
 
   if (message.type === 'stop' && (fromPopup || (fromTab && sender.documentId === job.documentId))) {
-    if (!job.pending) return pause(job, 'Stopped. Continue cleanup to rescan.');
+    if (!job.pending) return pause(job, 'Stopped. Continue cleanup to rescan.', 'manual');
     job.status = 'stopping';
     job.message = 'Stopping after the current request…';
     await write(job);
@@ -307,10 +355,12 @@ async function handle(message, sender) {
   if (!fromTab) return null;
   if (message.type === 'hello' && job.status === 'running' && atSection(job, sender.url)) {
     if (job.documentId && job.documentId !== sender.documentId) {
+      job.refreshAt = Date.now() + Cleaner.refreshInterval;
       recordInterruptedAction(job, 'X reloaded the page before the last action could be verified. Rescanning this section.');
       job.message = `Rechecking ${sections[job.section].name} after a page reload…`;
     }
     job.documentId = sender.documentId;
+    job.refreshAt ||= Date.now() + Cleaner.refreshInterval;
     await write(job);
     return job;
   }
@@ -327,38 +377,53 @@ async function handle(message, sender) {
   if (message.type === 'settled' && job.pending?.url === message.url) {
     if (message.ok) {
       const kind = job.pending.kind;
+      const key = itemKey(job.pending);
+      const confirmed = job.confirmed ||= {};
       if (kind === 'bookmark-bulk') {
         job.bookmarksCleared = true;
         addEvent(job, 'Bookmarks · X confirmed an empty list after clearing all.');
       } else {
-        const key = { delete: 'deleted', repost: 'reposts', bookmark: 'bookmarks', like: 'likes' }[kind];
-        job.totals[key]++;
+        const counter = { delete: 'deleted', repost: 'reposts', bookmark: 'bookmarks', like: 'likes' }[kind];
+        if (!confirmed[key]) job.totals[counter]++;
+        confirmed[key] = (confirmed[key] || 0) + 1;
         if (kind === 'delete') job.message = `Delete confirmed · ${job.totals.deleted} deleted this run.`;
       }
       job.changes++;
       job.recoveries = 0;
-      if (job.itemFailures) delete job.itemFailures[itemKey(job.pending)];
+      if (job.itemFailures) delete job.itemFailures[key];
+      if (job.problem?.url === message.url) job.problem = null;
     } else if (!message.cancelled) {
       job.totals.errors++;
-      rememberFailure(job, job.pending);
-      job.problem = { text: String(message.issue || 'X did not verify the action.').slice(0, 220), url: message.url };
+      const attempts = rememberFailure(job, job.pending);
+      const detail = String(message.issue || 'X did not verify the action.').slice(0, 220);
+      const retry = job.pending.kind === 'bookmark-bulk' ? ''
+        : attempts < MAX_ITEM_ATTEMPTS ? ' Will recheck this item.' : ' Retry limit reached for this run.';
+      job.problem = { text: detail + retry, url: message.url };
+      addEvent(job, `${sections[job.section].name} · ${detail}${retry}`);
     }
     if (message.sent || message.ok) job.batchActions++;
     if (job.pending.kind === 'bookmark-bulk' && message.ok) job.batchActions = 1;
-    job.nextActionAt = Date.now() + (job.pace ?? Cleaner.defaultPace);
+    job.nextActionAt = Math.max(job.nextActionAt || 0, Date.now() + (job.pace ?? Cleaner.defaultPace));
     if (!job.refreshPending && job.batchActions >= Cleaner.batchSize) {
       job.refreshPending = true;
       addEvent(job, `${sections[job.section].name} · Break after six actions`);
       job.nextActionAt = Math.max(job.nextActionAt, Date.now() + Cleaner.batchRest);
     }
     job.pending = null;
+    if (message.restriction?.reason) {
+      return pause(job, String(message.restriction.reason).slice(0, 350),
+        message.restriction.rateLimited === true ? 'rate-limit' : 'x');
+    }
     if (job.status === 'stopping') {
-      return pause(job, message.ok ? 'Stopped.' : `Stopped. Check the last attempted item: ${message.url}`);
+      return pause(job, message.ok || message.cancelled ? 'Stopped.' : `Stopped. Check the last attempted item: ${message.url}`, 'manual');
     }
     await write(job);
     return job;
   }
-  if (message.type === 'pause') return pause(job, String(message.reason).slice(0, 350), message.rateLimited === true);
+  if (message.type === 'pause') {
+    const kind = message.rateLimited === true ? 'rate-limit' : message.x === true ? 'x' : 'issue';
+    return pause(job, String(message.reason).slice(0, 350), kind);
+  }
   if (job.status !== 'running') return null;
 
   if (message.type === 'progress') {
@@ -381,7 +446,16 @@ async function handle(message, sender) {
     if (!permitted) return null;
     const remaining = job.nextActionAt - Date.now();
     if (remaining > 0) return { wait: remaining };
-    if ((job.itemFailures?.[itemKey(message.item)] || 0) >= MAX_ITEM_ATTEMPTS) return { skipped: true };
+    const key = itemKey(message.item);
+    if (job.confirmed?.[key] >= MAX_ITEM_ATTEMPTS) {
+      job.problem = { text: 'X showed this item again after two confirmations. Open it to check its current state.', url: message.item.url };
+      await write(job);
+      return { skipped: true, issue: job.problem.text };
+    }
+    const failure = job.itemFailures?.[key];
+    const attempts = typeof failure === 'number' ? failure : failure?.attempts || 0;
+    if (attempts >= MAX_ITEM_ATTEMPTS) return { skipped: true };
+    if (failure?.retryAt > Date.now()) return { retry: true };
     if (job.refreshPending) {
       job.refreshPending = false;
       job.batchActions = 0;
@@ -401,9 +475,7 @@ async function handle(message, sender) {
     if (job.pending) recordInterruptedAction(job, 'The last action could not be verified.');
     const reason = String(message.reason || 'X could not load this section.').slice(0, 180);
     const outcome = await refreshSection(job, { mode: 'recovery', reason });
-    if (outcome.exhausted) {
-      await finishSection(job, { result: 'review', detail: reason });
-    }
+    if (outcome.exhausted) return pause(job, `${reason} Try again later, then continue from the popup.`, 'x');
     return job;
   }
   if (message.type === 'sectionEnd' && !job.pending) {

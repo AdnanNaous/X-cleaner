@@ -44,8 +44,13 @@ label.pace { justify-content: space-between; margin-top: 8px; border-color: #4b4
 #pace { width: 76px; padding: 4px 6px; font: inherit; color: inherit; background: #000; border: 1px solid #888; border-radius: 4px; }
 #pace[aria-invalid="true"] { border-color: #fff; }
 .field-error { margin: 6px 0 0; font-size: 12px; }
-#countdown, #problem { padding: 0 12px 9px; color: #d1d1d1; font-size: 12px; }
-#countdown { font-variant-numeric: tabular-nums; }
+#elapsed, #countdown, #problem { padding: 0 12px 9px; color: #d1d1d1; font-size: 12px; }
+#elapsed { padding-top: 9px; }
+.interruption { border: 2px solid #fff; border-radius: 6px; padding: 11px; }
+.interruption strong { font-size: 15px; }
+.interruption p { margin: 5px 0; overflow-wrap: anywhere; }
+#acknowledge { min-height: 34px; margin-top: 6px; }
+#elapsed, #countdown { font-variant-numeric: tabular-nums; }
 
 .route { margin-bottom: 14px; }
 .route-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }

@@ -7,6 +7,13 @@ globalThis.Cleaner = Object.freeze({
   batchSize: 6,
   batchRest: 45000,
   rateRest: 300000,
+  itemRetryRest: 30000,
+  refreshInterval: 600000,
+  elapsedSince(start) {
+    const seconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+  },
   sectionOrder: [1, 2, 0, 3, 4],
   sections: [
     { name: 'Posts', suffix: '' },

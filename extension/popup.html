@@ -11,7 +11,7 @@
 <body>
   <main>
     <header>
-      <img src="icons/48.png" width="38" height="38" alt="">
+      <img src="icons/48.png" width="48" height="48" alt="">
       <div><h1>X Cleaner</h1><p class="account" id="account">Detecting account…</p></div>
       <span id="status" class="status">Ready</span>
     </header>
@@ -51,7 +51,14 @@
     </section>
 
     <section class="activity" aria-label="Cleanup progress">
+      <div id="interruption" class="interruption" hidden>
+        <strong id="interrupt-title"></strong>
+        <p id="interrupt-reason" role="alert"></p>
+        <p>The run stays stopped after you select OK.</p>
+        <button type="button" id="acknowledge">OK</button>
+      </div>
       <p id="message" role="status">Ready to scan your X account.</p>
+      <p id="elapsed" hidden></p>
       <p id="countdown" hidden></p>
       <p id="problem" hidden></p>
       <a id="last-item" hidden target="_blank" rel="noreferrer">Open last attempted item</a>
@@ -60,7 +67,7 @@
         <div><dt>Reposts undone</dt><dd id="reposts">0</dd></div>
         <div><dt>Bookmarks removed</dt><dd id="bookmarks">0</dd></div>
         <div><dt>Likes removed</dt><dd id="likes">0</dd></div>
-        <div><dt>Skipped cards</dt><dd id="skipped">0</dd></div>
+        <div><dt>Cards ignored</dt><dd id="skipped">0</dd></div>
         <div><dt>Action errors</dt><dd id="errors">0</dd></div>
       </dl>
     </section>

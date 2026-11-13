@@ -8,6 +8,7 @@ function harness() {
   const stores = { session: {}, local: {} };
   const navigations = [];
   const reloads = [];
+  const badges = [];
   const origin = 'chrome-extension://test/';
   const tabs = new Map();
   let nextTabId = 10;
@@ -22,6 +23,7 @@ function harness() {
   const chrome = {
     runtime: { getURL: name => origin + name, onMessage: hook('message') },
     storage,
+    action: { setBadgeText: async ({ text }) => { badges.push(text); } },
     tabs: {
       query: async () => [{ id: 5, url: activeUrl }],
       sendMessage: async () => ({ handle: activeAccount }),
@@ -41,7 +43,7 @@ function harness() {
         tab.status = 'complete';
         return { ...tab };
       },
-      reload: async id => { reloads.push(id); },
+      reload: async (id, options) => { reloads.push({ id, options }); },
       onRemoved: hook('removed'), onUpdated: hook('updated')
     }
   };
@@ -53,7 +55,7 @@ function harness() {
   const send = (message, sender) => new Promise((resolve, reject) =>
     callbacks.message(message, sender, response => response.error ? reject(Error(response.error)) : resolve(response.result)));
   return {
-    stores, navigations, reloads,
+    stores, navigations, reloads, badges,
     setAccount: (account, url = 'https://x.com/home') => { activeAccount = account; activeUrl = url; },
     setTab: (job, details) => Object.assign(tabs.get(job.tabId), details),
     change: (job, details, eventTab = details) => {
@@ -229,7 +231,15 @@ const end = async (h, job, result = 'clear') => {
   assert.ok((await recover.tab(job, 'refresh', { mode: 'recovery', reason: 'X stalled' })).exhausted);
   assert.equal((await recover.tab(job, 'pause', { reason: 'X rate limit', rateLimited: true })).status, 'paused');
   assert.equal((await recover.popup('start', { selection: [0, 1] })).status, 'paused');
+  const paused = await recover.popup('status');
+  assert.equal(paused.alertPending, true);
+  assert.equal(recover.badges.at(-1), '!');
+  assert.equal(paused.waitUntil - paused.pausedAt, 300000);
+  assert.equal(await recover.tab(paused, 'refresh', { mode: 'periodic' }), null);
   recover.tick(300000);
+  assert.equal((await recover.popup('start', { selection: [0, 1] })).status, 'paused');
+  assert.equal((await recover.popup('acknowledge', { id: paused.id })).status, 'paused');
+  assert.equal(recover.badges.at(-1), '');
   const continued = await recover.popup('start', { selection: [0, 1] });
   assert.equal(continued.section, 0);
   assert.equal(continued.status, 'running');
@@ -262,12 +272,11 @@ const end = async (h, job, result = 'clear') => {
   status = await route.change(job, { url: home });
   assert.equal(status.redirects, 2);
   status = await route.change(job, { url: home });
-  assert.equal(status.status, 'running');
-  assert.equal(status.section, 2);
-  assert.equal(status.results.find(result => result.section === 1).status, 'review');
-  assert.match(route.navigations.at(-1), /\/reposts$/);
-  job = await end(route, status);
-  job = await end(route, job);
+  assert.equal(status.status, 'paused');
+  assert.equal(status.section, 1);
+  assert.equal(status.alertPending, true);
+  await route.popup('acknowledge', { id: status.id });
+  job = await route.popup('start', { selection: [3, 4] });
   assert.equal(job.section, 3);
   for (let retry = 0; retry < 3; retry++) status = await route.change(job, { url: home });
   assert.equal(status.history, true);
@@ -277,7 +286,7 @@ const end = async (h, job, result = 'clear') => {
   status = await route.change(job, { url: 'https://x.com/i/flow/login' });
   assert.equal(status.status, 'paused');
   assert.equal(status.section, 4);
-  console.log('PASS Home redirect recovery and bounded fall-through, History fallback, auth pause, and stale events');
+  console.log('PASS Home redirect recovery and bounded pause, History fallback, auth pause, and stale events');
 
   const refresh = harness();
   job = await refresh.popup('start', { selection: [0, 1, 2] });
@@ -290,10 +299,10 @@ const end = async (h, job, result = 'clear') => {
     await refresh.tab(job, 'hello');
     status = await refresh.tab(job, 'sectionIssue', { reason: 'Page issue' });
   }
-  assert.equal(status.status, 'running');
-  assert.equal(status.section, 2);
-  assert.equal(status.results.find(result => result.section === 1).status, 'review');
-  console.log('PASS refresh targets Replies instead of Home and section errors advance the route');
+  assert.equal(status.status, 'paused');
+  assert.equal(status.section, 1);
+  assert.equal(status.alertPending, true);
+  console.log('PASS refresh targets Replies and exhausted page recovery shows a persistent alert');
 
   const preview = harness();
   job = await preview.popup('start', { selection: [0, 1, 3], preview: true });
@@ -326,8 +335,13 @@ const end = async (h, job, result = 'clear') => {
   assert.ok((await checkpoint.tab(job, 'begin', { item: bad })).allowed);
   await checkpoint.tab(job, 'settled', { url: bad.url, ok: false });
   checkpoint.tick(15000);
+  assert.ok((await checkpoint.tab(job, 'begin', { item: bad })).retry);
+  checkpoint.tick(15000);
   assert.ok((await checkpoint.tab(job, 'begin', { item: bad })).allowed);
   delete checkpoint.stores.session.job;
+  const interrupted = await checkpoint.popup('start', { selection: [0, 1, 2] });
+  assert.equal(interrupted.alertPending, true);
+  await checkpoint.popup('acknowledge', { id: interrupted.id });
   job = await checkpoint.popup('start', { selection: [0, 1, 2] });
   await checkpoint.tab(job, 'hello');
   checkpoint.tick(15000);
@@ -353,6 +367,47 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(await counters.tab(job, 'settled', { url: pending.url, ok: true, sent: true }), null);
   assert.equal((await counters.popup('status')).totals.deleted, 1);
   console.log('PASS confirmation survives same-route loading and increments the published total exactly once');
+
+  const scheduled = harness();
+  job = await scheduled.popup('start', { selection: [0], pace: 15000 });
+  await scheduled.tab(job, 'hello');
+  const repeated = candidate('delete', 992);
+  assert.equal(await scheduled.tab(job, 'refresh', { mode: 'periodic' }), null);
+  assert.ok((await scheduled.tab(job, 'begin', { item: repeated })).allowed);
+  scheduled.tick(600000);
+  assert.equal(await scheduled.tab(job, 'refresh', { mode: 'periodic' }), null);
+  assert.equal(scheduled.reloads.length, 0);
+  await scheduled.tab(job, 'settled', { url: repeated.url, ok: true, sent: true });
+  assert.ok((await scheduled.tab(job, 'refresh', { mode: 'periodic' })).reloading);
+  assert.equal(scheduled.reloads.at(-1).options.bypassCache, true);
+  const after = await scheduled.tab(job, 'hello');
+  assert.equal(after.id, job.id);
+  assert.equal(after.section, 0);
+  assert.equal(after.totals.deleted, 1);
+  assert.equal((await scheduled.tab(job, 'begin', { item: repeated })).wait, 15000);
+  scheduled.tick(15000);
+  assert.ok((await scheduled.tab(job, 'begin', { item: repeated })).allowed);
+  assert.equal((await scheduled.tab(job, 'settled', { url: repeated.url, ok: true, sent: true })).totals.deleted, 1);
+  scheduled.tick(15000);
+  assert.ok((await scheduled.tab(job, 'begin', { item: repeated })).skipped);
+  assert.equal(scheduled.reloads.length, 1);
+  console.log('PASS 10-minute refresh waits for settlement, bypasses cache, preserves cooldown and avoids duplicate counts');
+
+  const retry = harness();
+  job = await retry.popup('start', { selection: [1], pace: 0 });
+  await retry.tab(job, 'hello');
+  const deferred = candidate('delete', 888);
+  assert.ok((await retry.tab(job, 'begin', { item: deferred })).allowed);
+  await retry.tab(job, 'settled', { url: deferred.url, issue: 'Button moved' });
+  assert.ok((await retry.tab(job, 'begin', { item: deferred })).retry);
+  assert.ok((await retry.tab(job, 'refresh', { mode: 'items' })).reloading);
+  await retry.tab(job, 'hello');
+  assert.equal((await retry.tab(job, 'begin', { item: deferred })).wait, 30000);
+  retry.tick(30000);
+  assert.ok((await retry.tab(job, 'begin', { item: deferred })).allowed);
+  assert.equal((await retry.tab(job, 'settled', { url: deferred.url, ok: true })).totals.deleted, 1);
+  assert.ok((await retry.tab(job, 'refresh', { mode: 'items' })).exhausted);
+  console.log('PASS temporary failure is retried after a bounded cooldown');
 
   const identity = harness();
   assert.equal((await identity.popup('detect')).handle, 'sample_user');

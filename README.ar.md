@@ -8,17 +8,17 @@
 
 إضافة لتنظيف منشوراتك وردودك وإعادات نشرك وعلاماتك المرجعية وإعجاباتك على X. تتعرّف على الحساب المسجّل دخوله وتعرض اسم المستخدم قبل بدء التنظيف.
 
-[![اضغط للتحميل](./docs/images/download-ar.png)](./X-Cleaner-1.5.0.zip?raw=true)
+[![اضغط للتحميل](./docs/images/download-ar.png)](./X-Cleaner-1.6.0.zip?raw=true)
 
-**الإصدار 1.5.0 · ملف ZIP · تثبيت يدوي على متصفحات Chromium المكتبية**
+**الإصدار 1.6.0 · ملف ZIP · تثبيت يدوي على متصفحات Chromium المكتبية**
 
 ## التثبيت والتشغيل
 
-الصور التالية لقطات حقيقية من ويندوز وChrome، أضفت عليها أسهماً وتسميات X Cleaner للتوضيح. قد يختلف ترتيب الأزرار حسب المتصفح ونظام التشغيل.
+الصور التالية لقطات حقيقية من ويندوز وChrome، أضفت عليها أسهماً وتسميات X Cleaner للتوضيح. الصور تعرض اسم حزمة إصدار سابق. اختر مجلد الإصدار اللي حمّلته. قد يختلف ترتيب الأزرار حسب المتصفح ونظام التشغيل.
 
 ### ١. فك ضغط الملف
 
-على ويندوز، اضغط بالزر الأيمن على `X-Cleaner-1.5.0.zip` واختر **استخراج الكل** (**Extract All…**) ثم اضغط **استخراج**. على macOS، انقر مرتين على الملف. على لينكس، استخدم مدير الأرشيف لفك الضغط.
+على ويندوز، اضغط بالزر الأيمن على `X-Cleaner-1.6.0.zip` واختر **استخراج الكل** (**Extract All…**) ثم اضغط **استخراج**. على macOS، انقر مرتين على الملف. على لينكس، استخدم مدير الأرشيف لفك الضغط.
 
 ![مستكشف الملفات مع سهم يشير إلى خيار استخراج الكل](./docs/images/01-extract.png)
 
@@ -30,9 +30,9 @@
 
 ### ٣. اختر المجلد بعد فك الضغط
 
-حدّد مجلد **X-Cleaner-1.5.0** كامل بعد فك الضغط عند السهم 1، ثم اضغط **تحديد المجلد** (**Select Folder**) عند السهم 2. إذا حمّلت الكود من **Code → Download ZIP**، اختر مجلد `extension` الموجود داخل مجلد المستودع بعد فك الضغط.
+حدّد مجلد **X-Cleaner-1.6.0** كامل بعد فك الضغط عند السهم 1، ثم اضغط **تحديد المجلد** (**Select Folder**) عند السهم 2. إذا حمّلت الكود من **Code → Download ZIP**، اختر مجلد `extension` الموجود داخل مجلد المستودع بعد فك الضغط.
 
-![نافذة Chrome مع سهمين إلى مجلد X-Cleaner-1.5.0 وزر تحديد المجلد](./docs/images/03-select-folder.png)
+![نافذة Chrome مع سهمين إلى مجلد X Cleaner المستخرج وزر تحديد المجلد](./docs/images/03-select-folder.png)
 
 ### ٤. شغّل الإضافة من تبويب X
 
@@ -49,6 +49,10 @@
 
 لتحديث الإضافة، فك ضغط النسخة الجديدة فوق مجلد الإضافة اللي ثبّتّه سابقاً، واضغط **Reload** على بطاقة X Cleaner في صفحة الإضافات.
 
+تحدّث الإضافة صفحة التنظيف بعد 10 دقائق على نفس الصفحة، بعد انتهاء العملية الجارية. بعدها تكمّل من نفس القسم وتحافظ على العدّادات وفترة الانتظار. عدّاد **Cards ignored** يحسب بطاقات السياق والعناصر خارج نطاق التنظيف. العناصر المؤهّلة اللي تعثّرت بتنعاد مراجعتها بعد استراحة قصيرة، وإذا استمرت المشكلة بتظهر تحت **Needs review**.
+
+إذا ظهر حدّ طلبات أو تقييد على الحساب من X، تتوقّف الإضافة وتعرض السبب والوقت المنقضي منذ التوقف. يظل التنبيه ظاهر لحد ما تضغط **OK**. بعدها استأنف يدوياً لما يرجع X يشتغل. الخمس دقائق بعد حدّ الطلبات هي الحد الأدنى للانتظار اللي تفرضه الإضافة.
+
 ## توافق المتصفحات
 
 | المتصفح | مكان التثبيت |
@@ -60,7 +64,7 @@
 | Opera وOpera GX | `opera:extensions` ثم **Developer mode → Load unpacked**. |
 | Firefox وSafari ومتصفحات الجوال | ملف ZIP مخصّص لمتصفحات Chromium المكتبية. هذه المتصفحات خارج نطاق الإصدار الحالي. |
 
-تم التحقق من حزمة التثبيت باستخدام Chromium. توافق الإضافة مع كل متصفح وإصدار في القائمة لم يُختبر على حدة. Firefox يتطلّب إعداداً مختلفاً لعمل الإضافة بالخلفية في Manifest V3، وSafari يتطلّب تغليفاً خاصاً. راجع وثائق [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world) و[Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading) و[Brave](https://support.brave.app/hc/en-us/articles/360017909112-How-can-I-add-extensions-to-Brave) و[Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/) و[Opera](https://help.opera.com/en/extensions/testing/) و[Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background) و[Safari](https://developer.apple.com/safari/extensions/).
+حزمة التثبيت مخصّصة لمتصفحات Chromium المكتبية. توافق الإضافة مع كل متصفح وإصدار في القائمة لم يُختبر على حدة. Firefox يتطلّب إعداداً مختلفاً لعمل الإضافة بالخلفية في Manifest V3، وSafari يتطلّب تغليفاً خاصاً. راجع وثائق [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world) و[Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading) و[Brave](https://support.brave.app/hc/en-us/articles/360017909112-How-can-I-add-extensions-to-Brave) و[Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/) و[Opera](https://help.opera.com/en/extensions/testing/) و[Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background) و[Safari](https://developer.apple.com/safari/extensions/).
 
 ## حل المشاكل الشائعة
 

@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.5.0.zip.
+1. Extract X-Cleaner-1.6.0.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.5.0 folder.
+4. Select the entire extracted X-Cleaner-1.6.0 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
@@ -27,9 +27,8 @@ interrupted section when the selected categories match.
 RESULTS
 Deleted covers posts, replies and quote posts authored by the detected account. Reposts
 are undone using the original post's X control. Bookmarks and likes are
-removed from your account. Skipped cards counts encounters with non-target
-or unrecognized cards per scan, such as other people's posts shown above a
-reply. Action errors count attempts the extension could not verify. The
+removed from your account. Cards ignored counts out-of-scope cards encountered per scan,
+such as other people's posts shown above a reply. Action errors count attempts the extension could not verify. The
 popup lists sections that need review. The achievement appears when all
 selected sections finish their verification scan without unresolved items.
 
@@ -40,12 +39,14 @@ in those timelines. The delay defaults to 15 seconds. Enter 0 to 3600 seconds,
 including decimals like 0.5. At 0, verification still runs after each action.
 After six actions in a section, X Cleaner waits at least 45 seconds and
 continues in the same page. It refreshes when checking the end of a timeline
-or recovering from a loading error. Items that fail twice are left for review
+or recovering from a loading error. Items that fail twice are listed for review
 while the rest of the route continues. If X exposes its built-in Clear all
 Bookmarks command, X Cleaner checks for the empty list before reporting All.
-Temporary timeline failures get two paced recovery
-attempts. X rate limits and account challenges pause cleanup and need a
-manual restart from the popup when X is ready again.
+Eligible items that could not be processed are rechecked after a short
+break. The current page refreshes after 10 minutes once the current action
+settles. The run keeps its route, totals, and cooldown. If X shows a rate
+limit or account restriction, the run stops and displays elapsed pause time.
+Select OK to acknowledge the persistent alert. Resume manually when X is ready.
 X prohibits scripting its website and can restrict accounts. No pace can
 guarantee against enforcement. See https://help.x.com/en/rules-and-policies/x-automation
 

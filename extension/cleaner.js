@@ -243,9 +243,9 @@
   function restriction() {
     if (blockedByX) return blockedByX;
     const notice = pageNotice();
-    if (/verify (you are|your identity)|automated request|account (is |has been )?(locked|suspended|restricted)|تم قفل حسابك/.test(notice)) {
-      blockedByX = { reason: 'X requires an account check. Resolve the prompt on X, then continue cleanup.' };
-    } else if (/rate limit|too many requests|try again later|معدل الطلبات|طلبات كثيرة|حاول مرة أخرى لاحقًا/.test(notice)) {
+    if (/verify (you are|your identity)|automated request|account (is |has been )?(locked|suspended|restricted)|تم (قفل|تعليق|تقييد) حسابك/.test(notice)) {
+      blockedByX = { reason: 'X displayed an account check or restriction. Resolve the prompt on X before continuing.', x: true };
+    } else if (/rate limit|too many requests|try again later|temporarily limited|معدل الطلبات|طلبات كثيرة|حاول مرة أخرى لاحقًا/.test(notice)) {
       blockedByX = { reason: 'X displayed a rate limit. Cleanup paused. Continue once the wait ends and X works normally.', rateLimited: true };
     }
     return blockedByX;
@@ -255,12 +255,21 @@
     return Boolean(restriction());
   }
 
+  function refreshDue() {
+    return Boolean(job.refreshAt && Date.now() >= job.refreshAt);
+  }
+
   async function waitUntil(time) {
     while (!cancelled && Date.now() < time) {
-      if (!routeAndAccount()) return false;
-      await sleep(Math.min(700, time - Date.now()));
+      if (!routeAndAccount() || refreshDue()) return false;
+      await sleep(Math.min(700, time - Date.now(), job.refreshAt ? job.refreshAt - Date.now() : 700));
     }
-    return !cancelled && routeAndAccount();
+    return !cancelled && routeAndAccount() && !refreshDue();
+  }
+
+  async function refreshTimeline() {
+    const result = await ask('refresh', { mode: 'periodic' });
+    return Boolean(result?.reloading || cancelled);
   }
 
   function timelineError() {
@@ -301,6 +310,10 @@
       button:disabled {opacity:.55; cursor:default}
       button:focus-visible {outline:2px solid #fff; outline-offset:3px}
       aside[data-done] {border-color:#fff}
+      aside[data-alert] {border:2px solid #fff}
+      small[hidden] {display:none}
+      #elapsed {display:block; margin:0 0 7px; font-variant-numeric:tabular-nums}
+      #elapsed[hidden] {display:none}
     `;
     const box = document.createElement('aside');
     box.setAttribute('aria-label', 'X Cleaner');
@@ -312,33 +325,54 @@
     description.setAttribute('role', 'status');
     const route = document.createElement('small');
     const counts = document.createElement('small');
+    const elapsed = document.createElement('small');
+    elapsed.id = 'elapsed';
+    const updateElapsed = () => {
+      elapsed.hidden = !(panel?.status === 'paused' && panel.pausedAt && ['x', 'rate-limit'].includes(panel.pauseKind));
+      if (!elapsed.hidden) elapsed.textContent = 'Paused for ' + Cleaner.elapsedSince(panel.pausedAt);
+    };
+    let timer;
     header.append(title, control);
-    box.append(header, route, description, counts);
+    box.append(header, route, description, elapsed, counts);
     root.append(style, box);
     document.body.append(host);
     panelHost = host;
     control.addEventListener('click', () => {
-      if (panel?.status === 'running') {
+      if (panel?.alertPending) {
+        control.disabled = true;
+        ask('acknowledge').then(state => { if (!state) control.disabled = false; }).catch(() => { control.disabled = false; });
+      } else if (panel?.status === 'running') {
         control.disabled = true;
         ask('stop').catch(() => { control.disabled = false; });
       } else {
+        clearInterval(timer);
         host.remove();
       }
     });
     return state => {
       panel = state;
       title.textContent = state.status === 'finished' ? '✓ Cleanup complete'
-        : state.status === 'previewed' ? 'Preview complete' : state.preview ? 'X Cleaner · Preview' : 'X Cleaner';
+        : state.alertPending ? (state.preview ? 'Preview stopped' : 'Cleanup stopped')
+          : state.status === 'previewed' ? 'Preview complete' : state.preview ? 'X Cleaner · Preview' : 'X Cleaner';
       box.toggleAttribute('data-done', state.status === 'finished');
-      control.textContent = state.status === 'running' ? 'Stop' : 'Dismiss';
+      box.toggleAttribute('data-alert', Boolean(state.alertPending));
+      control.textContent = state.alertPending ? 'OK' : state.status === 'running' ? 'Stop' : 'Dismiss';
       control.disabled = state.status === 'stopping';
       route.textContent = ['running', 'stopping', 'paused'].includes(state.status)
         ? `${Cleaner.sections[state.section].name} · ${Cleaner.routeStatus(state)}` : '';
       route.hidden = !route.textContent;
-      description.textContent = state.message;
+      description.textContent = state.alertPending
+        ? state.message.split(' Check the last attempted item: ')[0] + ' Select OK to acknowledge. The run stays stopped.'
+        : state.message;
+      updateElapsed();
+      if (!elapsed.hidden && !timer) timer = setInterval(updateElapsed, 1000);
+      if (elapsed.hidden && timer) {
+        clearInterval(timer);
+        timer = undefined;
+      }
       const { deleted, reposts, bookmarks, likes, skipped, errors } = state.totals;
       const bookmarkCount = state.bookmarksCleared ? 'All' : bookmarks;
-      counts.textContent = state.preview ? 'Scan only' : `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} skipped · ${errors} errors`;
+      counts.textContent = state.preview ? 'Scan only' : `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} cards ignored · ${errors} action errors`;
     };
   }
 
@@ -363,7 +397,11 @@
       if (!await waitUntil(Date.now() + permission.wait) || !validCard(item)) return 'deferred';
       permission = await ask('begin', { item: { kind: item.kind, url: item.url } });
     }
-    if (permission?.skipped) return 'skipped';
+    if (permission?.retry) return 'retry';
+    if (permission?.skipped) {
+      lastIssue = permission.issue || 'Retry limit reached for this item.';
+      return 'skipped';
+    }
     if (!permission?.allowed) return 'deferred';
     let clicked = false;
     let deleteBaseline;
@@ -484,7 +522,8 @@
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       }
       const state = await ask('settled', {
-        url: item.url, ok, sent: clicked, issue: lastIssue, cancelled: cancelled && !clicked
+        url: item.url, ok, sent: clicked, issue: lastIssue, cancelled: cancelled && !clicked,
+        restriction: restriction()
       });
       batchDue = Boolean(state?.refreshPending);
       nextActionAt = state?.nextActionAt || 0;
@@ -547,7 +586,8 @@
       if (allowed) {
         const state = await ask('settled', {
           url: bulk.url, ok, sent, cancelled: cancelled && !sent,
-          issue: 'The bulk bookmark clear could not be verified. Checking bookmarks individually.'
+          issue: 'The bulk bookmark clear could not be verified. Checking bookmarks individually.',
+          restriction: restriction()
         });
         batchDue = Boolean(state?.refreshPending);
         nextActionAt = state?.nextActionAt || 0;
@@ -584,7 +624,7 @@
       return;
     }
     if (job.waitUntil > Date.now() && !await waitUntil(job.waitUntil)) {
-      if (!cancelled) await reportLostView();
+      if (!cancelled && !(refreshDue() && routeAndAccount() && await refreshTimeline())) await reportLostView();
       return;
     }
     const ready = await waitFor(() => {
@@ -593,11 +633,11 @@
     }, 18000);
     if (!ready && !cancelled) {
       const reason = 'X did not load a readable timeline.';
-      if (job.section !== 4 || job.history) {
-        const retry = await ask('refresh', { mode: 'recovery', reason });
-        if (retry?.reloading) return;
+      if ([3, 4].includes(job.section) && !job.history) {
+        await ask('sectionEnd', { result: 'review', detail: reason, fallback: true });
+      } else {
+        await ask('sectionIssue', { reason });
       }
-      await ask('sectionEnd', { result: 'review', detail: reason, fallback: true });
       return;
     }
 
@@ -607,6 +647,7 @@
     const failures = new Set();
     const found = new Set();
     const ambiguous = new Set();
+    const needsRetry = new Set();
     const removed = new Set();
     const scrollRoot = document.scrollingElement;
     let still = 0;
@@ -641,6 +682,7 @@
         detail = 'X reported a timeline loading error.';
         break;
       }
+      if (refreshDue() && await refreshTimeline()) return;
       if (batchDue) {
         await update(`${name} · Break after six actions`, true);
         if (await waitUntil(nextActionAt)) batchDue = false;
@@ -656,6 +698,7 @@
         const key = data?.id || normalize(card.innerText).slice(0, 160) || 'unknown-card';
         marker.push(key);
         if (kind) {
+          ambiguous.delete(key);
           if (job.preview) found.add(kind + ':' + key);
           else if (!removed.has(key) && !failures.has(key)) next ||= { ...data, kind };
           continue;
@@ -665,7 +708,7 @@
           all(card, '[data-testid="User-Name"] a').some(link => profileHandle(link.href) === job.handle));
         const missingToggle = data && job.section >= 2 && !removed.has(key);
         if (seemsEligible || missingToggle) ambiguous.add(key);
-        skipped.add(key);
+        else skipped.add(key);
       }
 
       if (next) {
@@ -678,9 +721,13 @@
         await update(`${name} · ${verbs[next.kind]} · Pass ${job.pass}`);
         const result = await apply(next);
         if (cancelled) return;
+        if (result === 'retry') {
+          failures.add(next.id);
+          needsRetry.add(next.id);
+          continue;
+        }
         if (result === 'skipped') {
           failures.add(next.id);
-          skipped.add(next.id);
           continue;
         }
         if (result === 'deferred') {
@@ -691,7 +738,7 @@
           if (++repeatDeferred < 4) await sleep(400);
           else {
             failures.add(next.id);
-            skipped.add(next.id);
+            needsRetry.add(next.id);
             lastIssue = 'An item repeatedly changed before its control could be used.';
           }
           continue;
@@ -704,9 +751,10 @@
           still = 0;
         } else {
           failures.add(next.id);
+          needsRetry.add(next.id);
           if (++errorsInARow === 3 && !restriction()) {
-            const recovery = await ask('refresh', { mode: 'recovery', reason: lastIssue });
-            if (recovery?.reloading) return;
+            await ask('sectionIssue', { reason: lastIssue });
+            return;
           }
         }
         continue;
@@ -736,17 +784,23 @@
     }
     if (cancelled) return;
     if (detail) {
-      const retry = await ask('refresh', { mode: 'recovery', reason: detail });
-      if (retry?.reloading) return;
-    } else if (removed.size) {
+      await ask('sectionIssue', { reason: detail });
+      return;
+    }
+    if (!job.preview && (needsRetry.size || ambiguous.size)) {
+      const retry = await ask('refresh', { mode: 'items' });
+      if (retry?.reloading || cancelled) return;
+    }
+    if (removed.size) {
       await update(`${name} · Waiting to check for older items`, true);
       if (!await waitUntil(nextActionAt)) {
-        if (!cancelled) await reportLostView();
+        if (!cancelled && !(refreshDue() && routeAndAccount() && await refreshTimeline())) await reportLostView();
         return;
       }
       const refresh = await ask('refresh', { mode: 'tail' });
       if (refresh?.reloading || cancelled) return;
     }
+    if (refreshDue() && routeAndAccount() && await refreshTimeline()) return;
     if (!detail && failures.size) detail = `${failures.size} item(s) could not be verified. ${lastIssue}`.trim();
     if (!detail && ambiguous.size) detail = `${ambiguous.size} card(s) lacked a recognizable action or permalink.`;
     if (!detail && !everSawCards && !emptyTimeline()) detail = 'X did not confirm that the section is empty.';
@@ -764,11 +818,11 @@
 
   async function run() {
     job = await ask('hello');
-    if (job?.status !== 'running') return;
+    if (!job || (job.status !== 'running' && !job.alertPending)) return;
     batchDue = Boolean(job.refreshPending);
     nextActionAt = job.nextActionAt || 0;
     document.addEventListener('pointerdown', event => {
-      if (!event.isTrusted || cancelled || !event.target.closest?.('main, header')) return;
+      if (job.status !== 'running' || !event.isTrusted || cancelled || !event.target.closest?.('main, header')) return;
       cancelled = true;
       ask('stop').catch(() => {});
     }, true);
@@ -777,6 +831,7 @@
     observer = (changes, area) => {
       if (area !== 'local') return;
       const state = changes.report?.newValue;
+      if (!state) return;
       cancelled ||= state?.id !== job.id || state.status !== 'running' ||
         state.section !== job.section || state.pass !== job.pass;
       if (state?.id !== job.id) return;
@@ -785,7 +840,7 @@
     chrome.storage.onChanged.addListener(observer);
     const latest = (await chrome.storage.local.get('report')).report;
     if (latest) observer({ report: { newValue: latest } }, 'local');
-    if (!cancelled) await scan();
+    if (!cancelled && job.status === 'running') await scan();
   }
 
   run().catch(async error => {

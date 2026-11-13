@@ -68,4 +68,18 @@ setImmediate(async () => {
   responses.start.resolve({ result: { ...snapshot, revision: 11, selected: [1], pace: 500 } });
   await action;
   console.log('PASS popup sends the chosen category and fractional delay, restores zero, and validates invalid input');
+  const pause = { ...snapshot, revision: 12, status: 'paused', pauseKind: 'rate-limit', pausedAt: Date.now() - 61000,
+    waitUntil: Date.now() + 100000, ratePaused: true, alertPending: true, message: 'X displayed a rate limit.' };
+  onChange({ report: { newValue: pause } }, 'local');
+  assert.equal(node('interruption').hidden, false);
+  assert.equal(node('elapsed').textContent, 'Paused for 1:01');
+  assert.equal(node('start').disabled, true);
+  const confirm = node('acknowledge').listeners.click();
+  assert.equal(responses.acknowledge.message.id, pause.id);
+  responses.acknowledge.resolve({ result: { ...pause, revision: 13, alertPending: false } });
+  await confirm;
+  assert.equal(node('interruption').hidden, true);
+  assert.equal(node('elapsed').hidden, false);
+  assert.equal(node('start').disabled, true);
+  console.log('PASS persistent pause alert, elapsed counter, and acknowledgement leaves rate hold active');
 });

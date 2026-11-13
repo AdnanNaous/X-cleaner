@@ -6,17 +6,17 @@
 
 Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.5.0.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.0.zip?raw=true)
 
-**Version 1.5.0 · ZIP · Manual installation on desktop Chromium browsers**
+**Version 1.6.0 · ZIP · Manual installation on desktop Chromium browsers**
 
 ## Install and run
 
-The images below use real Windows and Chrome screenshots with arrows and X Cleaner labels added. The layout may vary by browser and operating system.
+The images below use real Windows and Chrome screenshots with arrows and X Cleaner labels added. The screenshots show an earlier ZIP filename. Select the extracted folder for the version you downloaded. The layout may vary by browser and operating system.
 
 ### 1. Extract the ZIP
 
-On Windows, right-click `X-Cleaner-1.5.0.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+On Windows, right-click `X-Cleaner-1.6.0.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
 
 ![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
 
@@ -28,9 +28,9 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Select the entire extracted **X-Cleaner-1.5.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.6.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
-![Chrome’s folder picker highlighting the entire X-Cleaner-1.5.0 folder and Select Folder](./docs/images/03-select-folder.png)
+![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
 
 ### 4. Open X Cleaner on X
 
@@ -47,6 +47,10 @@ Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-u
 
 To update an unpacked installation, extract the new ZIP over your existing extension folder and click **Reload** on the X Cleaner card in your browser’s extensions page.
 
+The cleanup tab refreshes after 10 minutes on the same page, once the current action is settled. The run keeps its place, totals, and cooldown. Cards ignored are outside the selected cleanup or shown for context. Eligible items that could not be processed are rechecked after a short break. Persistent failures appear under **Needs review**.
+
+When X shows a rate limit or account restriction, cleanup stops and displays the reason and elapsed pause time. The alert stays visible until you select **OK**. Resume manually once X is ready. The 5-minute wait after a rate limit is the extension’s minimum.
+
 ## Browser compatibility
 
 | Browser | Where to install |
@@ -58,7 +62,7 @@ To update an unpacked installation, extract the new ZIP over your existing exten
 | Opera and Opera GX | `opera:extensions` · Developer mode → Load unpacked. |
 | Firefox, Safari, and mobile browsers | This ZIP targets desktop Chromium. These browsers are outside the scope of this release. |
 
-The ZIP was packaged and validated with Chromium. Compatibility with each listed Chromium browser and version has yet to be tested individually. Firefox uses a different background-script setup for Manifest V3. Safari requires its own packaging. See [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), [Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading), [Brave](https://support.brave.app/hc/en-us/articles/360017909112-How-can-I-add-extensions-to-Brave), [Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/), [Opera](https://help.opera.com/en/extensions/testing/), [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background), and [Safari](https://developer.apple.com/safari/extensions/).
+The ZIP targets desktop Chromium. Compatibility with each listed Chromium browser and version has yet to be tested individually. Firefox uses a different background-script setup for Manifest V3. Safari requires its own packaging. See [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), [Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading), [Brave](https://support.brave.app/hc/en-us/articles/360017909112-How-can-I-add-extensions-to-Brave), [Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/), [Opera](https://help.opera.com/en/extensions/testing/), [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background), and [Safari](https://developer.apple.com/safari/extensions/).
 
 ## Troubleshooting
 
