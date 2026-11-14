@@ -80,11 +80,11 @@ async function pause(job, reason, kind = 'issue') {
 }
 
 function atSection(job, url) {
-  return Cleaner.atSection(job.section, url, job.handle, job.history);
+  return Cleaner.atSection(job.section, url, job.handle, job.history, job.replySearch);
 }
 
 async function navigate(job, { refresh = false } = {}) {
-  const target = Cleaner.sectionTarget(job.section, job.handle, job.history);
+  const target = Cleaner.sectionTarget(job.section, job.handle, job.history, job.replySearch);
   job.documentId = null;
   job.refreshAt = Date.now() + Cleaner.refreshInterval;
   await write(job);
@@ -102,6 +102,7 @@ async function navigate(job, { refresh = false } = {}) {
 
 async function openSection(job) {
   job.history = false;
+  job.replySearch = false;
   job.skippedHere = 0;
   job.batchActions = 0;
   job.recoveries = 0;
@@ -127,6 +128,16 @@ async function openHistory(job) {
   job.history = true;
   job.redirects = 0;
   job.message = `Looking for ${sections[job.section].name} in History…`;
+  await navigate(job);
+}
+
+async function openReplySearch(job) {
+  job.replySearch = true;
+  job.skippedHere = 0;
+  job.redirects = 0;
+  job.itemsRechecked = false;
+  job.message = 'Replies · Checking your replies through X Search.';
+  addEvent(job, job.message);
   await navigate(job);
 }
 
@@ -161,10 +172,14 @@ async function recoverRoute(job, url) {
     await openHistory(job);
     return;
   }
+  if (job.section === 1 && !job.replySearch) {
+    await openReplySearch(job);
+    return;
+  }
   await pause(job, detail + ' The redirect persisted after two retries. Try again later.', 'x');
 }
 
-async function start(old, selection, pace, preview, accountHandle) {
+async function start(old, selection, pace, accountHandle) {
   if (old?.status === 'running' || old?.status === 'stopping' ||
       old?.alertPending || (old?.handle === accountHandle && old.ratePaused && old.waitUntil > Date.now())) return old;
   const selected = Cleaner.sectionOrder.filter(index => Array.isArray(selection) && selection.includes(index));
@@ -185,11 +200,11 @@ async function start(old, selection, pace, preview, accountHandle) {
   }
   if (!tab) tab = await chrome.tabs.create({ url: 'about:blank', active: true });
   const keep = old?.handle === accountHandle && ['paused', 'review'].includes(old.status) && Cleaner.sameSections(old.selected, selected) &&
-    Boolean(old.preview) === preview;
+    !old.preview;
   const resume = keep && old.status === 'paused' && String(old.selected) === String(selected) && selected.includes(old.section);
   if (keep && old.pending) recordInterruptedAction(old, 'Chrome closed before the last action could be verified.');
   const job = {
-    id: crypto.randomUUID(), tabId: tab.id, status: 'running', selected, preview, handle: accountHandle,
+    id: crypto.randomUUID(), tabId: tab.id, status: 'running', selected, handle: accountHandle,
     itemFailures: keep && old.status === 'paused' ? old.itemFailures || {} : {},
     confirmed: keep && old.status === 'review'
       ? Object.fromEntries(Object.keys(old.confirmed || {}).map(key => [key, 1]))
@@ -213,8 +228,7 @@ async function finishSection(job, message) {
     section: job.section,
     name: sections[job.section].name,
     status: message.result === 'clear' ? 'clear' : 'review',
-    detail: String(message.detail || '').slice(0, 250),
-    found: job.preview ? Math.max(0, Number(message.found) || 0) : undefined
+    detail: String(message.detail || '').slice(0, 250)
   });
   addEvent(job, `${sections[job.section].name} · ${message.result === 'clear' ? 'Scanned' : 'Needs review'}`);
   const next = job.selected[job.selected.indexOf(job.section) + 1];
@@ -223,7 +237,7 @@ async function finishSection(job, message) {
     await openSection(job);
     return;
   }
-  if (!job.preview && (job.pass === 1 || (job.changes > 0 && job.pass < MAX_PASSES))) {
+  if (job.pass === 1 || (job.changes > 0 && job.pass < MAX_PASSES)) {
     job.pass++;
     job.section = job.selected[0];
     job.changes = 0;
@@ -232,22 +246,21 @@ async function finishSection(job, message) {
     return;
   }
   const unresolved = job.changes > 0 || job.results.some(result => result.status !== 'clear');
-  job.status = unresolved ? 'review' : job.preview ? 'previewed' : 'finished';
+  job.status = unresolved ? 'review' : 'finished';
   job.alertPending = unresolved;
   job.waitUntil = 0;
   if (!unresolved) job.problem = null;
   job.documentId = null;
   job.message = unresolved
-    ? `${job.preview ? 'Preview' : 'Cleanup'} stopped with items or sections to review. Check the details and retry when X is ready.`
-    : job.preview ? 'Preview complete. Counts reflect the items X exposed during this scan.'
-      : 'No more eligible items surfaced in the selected sections.';
+    ? 'Cleanup stopped with items or sections to review. Check the details and retry when X is ready.'
+    : 'No more eligible items surfaced in the selected sections.';
   await write(job);
 }
 
 async function refreshSection(job, message) {
   const mode = message.mode;
   if (mode === 'tail' && !job.batchActions) return null;
-  if (mode === 'items' && (job.preview || job.itemsRechecked)) return { exhausted: true };
+  if (mode === 'items' && job.itemsRechecked) return { exhausted: true };
   if (mode === 'periodic' && (!job.refreshAt || Date.now() < job.refreshAt)) return null;
   if (mode === 'recovery' && job.recoveries >= 2) return { exhausted: true };
   if (!['tail', 'items', 'periodic', 'recovery'].includes(mode)) return null;
@@ -338,7 +351,8 @@ async function handle(message, sender) {
       ? await pause(old, 'Cleanup was interrupted. When X is ready, choose Continue cleanup.') : old;
     const pace = message.pace === undefined ? (previous?.handle === detected.handle
       ? previous.pace ?? Cleaner.defaultPace : Cleaner.defaultPace) : message.pace;
-    return start(previous, message.selection, pace, message.preview === true, detected.handle);
+    if (message.preview === true) throw new Error('Reopen the updated X Cleaner popup to start cleanup.');
+    return start(previous, message.selection, pace, detected.handle);
   }
   if (!job?.handle) return null;
   const fromTab = sender.tab?.id === job.tabId && sender.frameId === 0;
@@ -479,6 +493,10 @@ async function handle(message, sender) {
     return job;
   }
   if (message.type === 'sectionEnd' && !job.pending) {
+    if (job.section === 1 && !job.replySearch && message.checkReplySearch === true) {
+      await openReplySearch(job);
+      return job;
+    }
     if ((job.section === 3 || job.section === 4) && !job.history && message.fallback) {
       await openHistory(job);
       return job;

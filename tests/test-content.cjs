@@ -45,20 +45,22 @@ function harness() {
   document.find.set('[data-testid="primaryColumn"]', [primary]);
   const calls = [];
   let now = 0;
+  document.scrollingElement = { scrollTop: 0, scrollHeight: 600, clientHeight: 600 };
   const chrome = { runtime: { onMessage: { addListener() {} }, sendMessage: async message => {
     calls.push(message);
     return { result: ['begin', 'check'].includes(message.type) ? { allowed: true } : null };
   } } };
   const sandbox = { URL, chrome, document, location, Date: { now: () => now },
+    window: { innerHeight: 600, scrollTo() {}, scrollBy() {} },
     setTimeout: (resolve, ms) => { now += ms; resolve(); } };
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync('extension/shared.js', 'utf8'), context);
   const source = fs.readFileSync('extension/cleaner.js', 'utf8').split('  run().catch')[0];
-  vm.runInContext(source + 'globalThis.fixture = { account, signedInHandle, apply, clearBookmarks, identify, parseCard, rateLimited, setJob(value) {job = value;} }; })();', context);
+  vm.runInContext(source + 'globalThis.fixture = { account, signedInHandle, apply, clearBookmarks, identify, parseCard, rateLimited, scan, setJob(value) {job = value;} }; })();', context);
   const api = context.fixture;
-  const job = (section, selected = [0, 1, 2, 3, 4], preview = false) => {
-    location.href = context.Cleaner.sectionUrl(section, 'sample_user');
-    api.setJob({ section, handle: 'sample_user', selected, preview, id: 'run', pass: 1 });
+  const job = (section, selected = [0, 1, 2, 3, 4], replySearch = false) => {
+    location.href = context.Cleaner.sectionTarget(section, 'sample_user', false, replySearch);
+    api.setJob({ section, handle: 'sample_user', selected, replySearch, id: 'run', pass: 1 });
   };
   function card(author, id, control, contextLabel = '') {
     const article = new Element();
@@ -78,10 +80,22 @@ function harness() {
     primary.find.set(ARTICLE, [article]);
     return { article, button };
   }
-  return { api, document, primary, profile, calls, job, card };
+  return { api, document, primary, profile, calls, job, card, location };
 }
 
 (async () => {
+  const unlabelled = harness();
+  unlabelled.job(1, [1]);
+  const contextCards = Array.from({ length: 56 }, (_, index) => unlabelled.card('other', index + 10, 'caret').article);
+  const missed = unlabelled.card('sample_user', 100, 'caret');
+  unlabelled.primary.find.set(ARTICLE, [...contextCards, missed.article]);
+  await unlabelled.api.scan();
+  assert.equal(unlabelled.calls.at(-1).type, 'sectionEnd');
+  assert.equal(unlabelled.calls.at(-1).checkReplySearch, true);
+  assert.equal(unlabelled.calls.find(call => call.type === 'progress').skipped, 56);
+  assert.equal(unlabelled.calls.some(call => call.type === 'begin'), false);
+  console.log('PASS mixed Replies feed requests reply search without ignoring the owned unlabelled card');
+
   const h = harness();
   h.job(1);
   assert.equal(h.api.account(), 'verified');
@@ -90,6 +104,13 @@ function harness() {
   assert.equal(h.api.identify(foreign.article), null);
   const owned = h.card('sample_user', 2, 'caret');
   assert.equal(h.api.identify(owned.article), null);
+  h.job(1, [1], true);
+  assert.equal(h.api.identify(owned.article), 'delete');
+  assert.equal(h.api.identify(foreign.article), null);
+  const exactSearch = h.location.href;
+  h.location.href = exactSearch.replace('filter%3Areplies', 'filter%3Alinks');
+  assert.equal(h.api.identify(owned.article), null);
+  h.job(1, [1]);
   const marker = new Element('Replying to @other');
   marker.ancestors.set(ARTICLE, owned.article);
   marker.find.set('a[href]', [new Element('@other', 'https://x.com/other')]);
@@ -112,6 +133,8 @@ function harness() {
   assert.equal(await h.api.apply({ ...h.api.parseCard(owned.article), kind: 'delete' }), 'deferred');
   assert.equal(h.calls.length, 0);
   h.profile.href = 'https://x.com/sample_user';
+  h.job(1, [1], true);
+  owned.article.find.delete(REPLY);
 
   owned.button.onclick = () => {
     const menu = new Element();
@@ -135,7 +158,7 @@ function harness() {
   assert.equal(h.calls.at(-1).ok, true);
 
   h.job(2);
-  const repost = h.card('Other', 3, 'unretweet', 'You reposted');
+  const repost = h.card('Other', 3, 'unretweet');
   assert.equal(h.api.identify(repost.article), 'repost');
   repost.button.onclick = () => {
     const confirm = new Element('Undo repost');
@@ -168,7 +191,7 @@ function harness() {
   assert.equal(h.api.parseCard(alternate.article), null);
 
   const b = harness();
-  b.job(3, [3], true);
+  b.job(4, [4]);
   b.card('Other', 55, 'removeBookmark');
   const overflow = new Element('More');
   b.primary.find.set('[data-testid="bookmarkOverflowButton"]', [overflow]);

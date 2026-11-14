@@ -2,6 +2,7 @@
 
 (() => {
   const ARTICLE = 'article[data-testid="tweet"]';
+  const AUTHOR = '[data-testid="User-Name"], [data-testid="UserName"]';
   const PROFILE_LINK = [
     'a[data-testid="AppTabBar_Profile_Link"]',
     'header nav a[aria-label="Profile"]',
@@ -56,9 +57,10 @@
     return matches.length === 1 ? matches[0] : null;
   };
   const primary = () => unique(document, '[data-testid="primaryColumn"]') || unique(document, 'main');
+  const cardMarkup = (card, node) => node?.closest(ARTICLE) === card &&
+    !node.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"]');
   const owned = (card, selector) => {
-    const matches = all(card, selector).filter(node => node.closest(ARTICLE) === card &&
-      !node.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"]'));
+    const matches = all(card, selector).filter(node => cardMarkup(card, node));
     return matches.length === 1 ? matches[0] : null;
   };
 
@@ -124,13 +126,17 @@
   }
 
   function correctView() {
-    if (!Cleaner.atSection(job.section, location.href, job.handle, job.history)) return false;
+    if (!atSection()) return false;
     if (!currentHistory()) return true;
     const tab = getHistoryTab();
     if (tab) return selectedTab(tab);
     const route = Cleaner.route(location.href);
     if (job.section === 4) return route === '/i/history/likes';
     return job.section === 3 && route === '/i/history/bookmarks';
+  }
+
+  function atSection() {
+    return Cleaner.atSection(job.section, location.href, job.handle, job.history, job.replySearch);
   }
 
   async function prepareView() {
@@ -145,17 +151,14 @@
   }
 
   function parseCard(card) {
-    const time = owned(card, 'time');
-    const timestampRoute = Cleaner.route(time?.closest('a[href]')?.href);
-    const header = owned(card, '[data-testid="User-Name"], [data-testid="UserName"]');
-    const fallbackRoutes = () => [...new Set(all(header, 'a[href*="/status/"]')
-      .map(link => Cleaner.route(link.href)).filter(Boolean))];
     const permalink = /^\/([a-z0-9_]{1,15})\/status\/(\d{1,22})$/;
-    let match = timestampRoute?.match(permalink);
-    if (!match) {
-      const routes = fallbackRoutes();
-      if (routes.length === 1) match = routes[0].match(permalink);
-    }
+    const matchRoutes = links => [...new Set(links.map(link => Cleaner.route(link?.href))
+      .filter(path => permalink.test(path)))];
+    const timestamps = matchRoutes(all(card, 'time').filter(node => cardMarkup(card, node))
+      .map(node => node.closest('a[href]')));
+    const routes = timestamps.length ? timestamps : matchRoutes(all(owned(card, AUTHOR), 'a[href*="/status/"]')
+      .filter(node => !node.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"]')));
+    const match = routes.length === 1 ? routes[0].match(permalink) : null;
     if (!match) return null;
     const [, author, id] = match;
     return { card, author, id, url: Cleaner.origin + match[0] };
@@ -167,10 +170,7 @@
 
   function repostedHere(card) {
     if (repostLabels.has(socialContext(card))) return true;
-    if (job.section !== 2) return false;
-    const expected = Cleaner.route(Cleaner.sectionUrl(2, job.handle));
-    return all(primary(), '[role="tab"][href], [role="tablist"] a[href]').some(tab =>
-      selectedTab(tab) && Cleaner.route(tab.href) === expected);
+    return job.section === 2 && atSection();
   }
 
   function markedReply(card) {
@@ -189,8 +189,9 @@
     if (job.section === 2) {
       return repostedHere(card) && owned(card, '[data-testid="unretweet"]') ? 'repost' : null;
     }
-    if (data.author === job.handle && job.section <= 1 &&
-        !repostLabels.has(socialContext(card)) && markedReply(card) === (job.section === 1)) return 'delete';
+    if (data.author !== job.handle || repostLabels.has(socialContext(card))) return null;
+    if (job.section === 1 && (job.replySearch ? atSection() : markedReply(card))) return 'delete';
+    if (job.section === 0 && !markedReply(card)) return 'delete';
     return null;
   }
 
@@ -203,7 +204,7 @@
     const matches = new Set(roots.flatMap(root => all(root, selector)).filter(enabled));
     if (names) {
       for (const item of matches) {
-        if (!names.has(normalize(item.innerText))) matches.delete(item);
+        if (!labelled(item, names)) matches.delete(item);
       }
     }
     return matches.size === 1 ? [...matches][0] : null;
@@ -280,7 +281,11 @@
 
   function emptyTimeline() {
     return all(primary(), '[data-testid="emptyState"], [data-testid="empty_state_header_text"]')
-      .some(node => emptyLabels.some(label => normalize(node.innerText).includes(label)));
+      .some(node => {
+        const label = normalize(node.innerText);
+        return emptyLabels.some(text => label.includes(text)) ||
+          (job.replySearch && /^(?:no results for|no results found|لا توجد نتائج|لم يتم العثور على نتائج)/.test(label));
+      });
   }
 
   function remainingPostCount() {
@@ -352,8 +357,7 @@
     return state => {
       panel = state;
       title.textContent = state.status === 'finished' ? '✓ Cleanup complete'
-        : state.alertPending ? (state.preview ? 'Preview stopped' : 'Cleanup stopped')
-          : state.status === 'previewed' ? 'Preview complete' : state.preview ? 'X Cleaner · Preview' : 'X Cleaner';
+        : state.alertPending ? 'Cleanup stopped' : 'X Cleaner';
       box.toggleAttribute('data-done', state.status === 'finished');
       box.toggleAttribute('data-alert', Boolean(state.alertPending));
       control.textContent = state.alertPending ? 'OK' : state.status === 'running' ? 'Stop' : 'Dismiss';
@@ -372,7 +376,7 @@
       }
       const { deleted, reposts, bookmarks, likes, skipped, errors } = state.totals;
       const bookmarkCount = state.bookmarksCleared ? 'All' : bookmarks;
-      counts.textContent = state.preview ? 'Scan only' : `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} cards ignored · ${errors} action errors`;
+      counts.textContent = `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} cards ignored · ${errors} action errors`;
     };
   }
 
@@ -444,7 +448,7 @@
         openedMenu = true;
         button = await waitFor(() => {
           const choice = unique(document, '[data-testid="unretweetConfirm"]');
-          return enabled(choice) && undoLabels.has(normalize(choice.innerText)) ? choice :
+          return enabled(choice) && labelled(choice, undoLabels) ? choice :
             menuItem('[role="menuitem"]', undoLabels);
         }, 7500);
         if (!button) return fail('The Undo repost confirmation did not appear.');
@@ -601,16 +605,16 @@
     if (account() === 'mismatch') {
       return ask('pause', { reason: `The active X account changed. Switch back to @${job.handle} and continue.` });
     }
-    if (!Cleaner.atSection(job.section, location.href, job.handle, job.history)) return ask('routeLost');
+    if (!atSection()) return ask('routeLost');
     return ask('sectionIssue', { reason: 'The page stopped showing the expected section or account controls.' });
   }
 
   async function scan() {
     const name = sections[job.section].name;
     await waitFor(() => account() || restriction() ||
-      !Cleaner.atSection(job.section, location.href, job.handle, job.history), 18000);
+      !atSection(), 18000);
     if (cancelled) return;
-    if (account() !== 'verified' || restriction() || !Cleaner.atSection(job.section, location.href, job.handle, job.history)) {
+    if (account() !== 'verified' || restriction() || !atSection()) {
       await reportLostView();
       return;
     }
@@ -633,7 +637,9 @@
     }, 18000);
     if (!ready && !cancelled) {
       const reason = 'X did not load a readable timeline.';
-      if ([3, 4].includes(job.section) && !job.history) {
+      if (job.section === 1 && !job.replySearch) {
+        await ask('sectionEnd', { result: 'review', detail: reason, checkReplySearch: true });
+      } else if ([3, 4].includes(job.section) && !job.history) {
         await ask('sectionEnd', { result: 'review', detail: reason, fallback: true });
       } else {
         await ask('sectionIssue', { reason });
@@ -645,7 +651,6 @@
     if (cancelled) return;
     const skipped = new Set();
     const failures = new Set();
-    const found = new Set();
     const ambiguous = new Set();
     const needsRetry = new Set();
     const removed = new Set();
@@ -653,6 +658,8 @@
     let still = 0;
     let errorsInARow = 0;
     let everSawCards = false;
+    let everSawTarget = false;
+    let checkReplySearch = false;
     let previous = '';
     let lastReport = '';
     let lastSkipped = -1;
@@ -698,15 +705,22 @@
         const key = data?.id || normalize(card.innerText).slice(0, 160) || 'unknown-card';
         marker.push(key);
         if (kind) {
+          everSawTarget = true;
           ambiguous.delete(key);
-          if (job.preview) found.add(kind + ':' + key);
-          else if (!removed.has(key) && !failures.has(key)) next ||= { ...data, kind };
+          if (!removed.has(key) && !failures.has(key)) next ||= { ...data, kind };
           continue;
         }
         // Context cards in Replies can belong to someone else. They are never targets.
-        const seemsEligible = !data && (job.section >= 2 || repostedHere(card) ||
-          all(card, '[data-testid="User-Name"] a').some(link => profileHandle(link.href) === job.handle));
+        const ownHeader = !data && all(owned(card, AUTHOR), 'a[href]')
+          .some(link => profileHandle(link.href) === job.handle);
+        const seemsEligible = !data && (job.section >= 2 || ownHeader ||
+          (job.section === 1 && markedReply(card)));
         const missingToggle = data && job.section >= 2 && !removed.has(key);
+        if (job.section === 1 && !job.replySearch &&
+            (seemsEligible || (data?.author === job.handle && !repostLabels.has(socialContext(card))))) {
+          checkReplySearch = true;
+          continue;
+        }
         if (seemsEligible || missingToggle) ambiguous.add(key);
         else skipped.add(key);
       }
@@ -787,7 +801,7 @@
       await ask('sectionIssue', { reason: detail });
       return;
     }
-    if (!job.preview && (needsRetry.size || ambiguous.size)) {
+    if (needsRetry.size || ambiguous.size) {
       const retry = await ask('refresh', { mode: 'items' });
       if (retry?.reloading || cancelled) return;
     }
@@ -804,15 +818,19 @@
     if (!detail && failures.size) detail = `${failures.size} item(s) could not be verified. ${lastIssue}`.trim();
     if (!detail && ambiguous.size) detail = `${ambiguous.size} card(s) lacked a recognizable action or permalink.`;
     if (!detail && !everSawCards && !emptyTimeline()) detail = 'X did not confirm that the section is empty.';
-    if (!job.preview && !detail && job.section === 0 && job.pass > 1 && job.selected.includes(2) && !removed.size) {
+    if (!detail && job.section === 0 && job.pass > 1 && job.selected.length === sections.length && !removed.size) {
       const remaining = remainingPostCount();
       if (remaining) detail = `X still reports ${remaining} on the profile.`;
+    }
+    if (!detail && job.replySearch && everSawCards && !everSawTarget && !emptyTimeline()) {
+      detail = 'X Search did not show any verifiable replies from your account.';
     }
     await ask('sectionEnd', {
       result: detail ? 'review' : 'clear',
       detail: detail || 'No more eligible items surfaced.',
       fallback: !everSawCards && !emptyTimeline(),
-      found: found.size
+      checkReplySearch: job.section === 1 && !job.replySearch &&
+        (checkReplySearch || (!everSawTarget && !emptyTimeline()))
     });
   }
 
@@ -840,7 +858,7 @@
     chrome.storage.onChanged.addListener(observer);
     const latest = (await chrome.storage.local.get('report')).report;
     if (latest) observer({ report: { newValue: latest } }, 'local');
-    if (!cancelled && job.status === 'running') await scan();
+    if (!cancelled && job.status === 'running' && !job.preview) await scan();
   }
 
   run().catch(async error => {

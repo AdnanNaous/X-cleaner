@@ -111,8 +111,8 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(job.status, 'finished');
   assert.deepEqual(job.totals, { deleted: 2, reposts: 1, bookmarks: 1, likes: 1, skipped: 0, errors: 0 });
   assert.deepEqual(h.navigations.map(link => new URL(link).pathname), [
-    '/sample_user/with_replies', '/sample_user/reposts', '/sample_user', '/i/bookmarks', '/sample_user/likes',
-    '/sample_user/with_replies', '/sample_user/reposts', '/sample_user', '/i/bookmarks', '/sample_user/likes'
+    '/sample_user', '/sample_user/reposts', '/sample_user/with_replies', '/i/bookmarks', '/sample_user/likes',
+    '/sample_user', '/sample_user/reposts', '/sample_user/with_replies', '/i/bookmarks', '/sample_user/likes'
   ]);
   console.log('PASS all routes, ownership and tab binding, exact per-action counts, second pass');
 
@@ -147,11 +147,11 @@ const end = async (h, job, result = 'clear') => {
   await upgraded.tab(old, 'hello');
   await transfer(upgraded, old, 'delete', 58);
   await upgraded.popup('stop');
-  upgraded.stores.session.job.selected = [0, 1, 2];
-  upgraded.stores.session.job.section = 0;
+  upgraded.stores.session.job.selected = [1, 2, 0];
+  upgraded.stores.session.job.section = 1;
   const migrated = await upgraded.popup('start', { selection: [0, 1, 2] });
-  assert.deepEqual(Array.from(migrated.selected), [1, 2, 0]);
-  assert.equal(migrated.section, 1);
+  assert.deepEqual(Array.from(migrated.selected), [0, 2, 1]);
+  assert.equal(migrated.section, 0);
   assert.equal(migrated.totals.deleted, 1);
   console.log('PASS Replies and Posts can run independently, short delays and zero survive resume, and old routes migrate');
 
@@ -207,7 +207,7 @@ const end = async (h, job, result = 'clear') => {
     batch.tick(pace.wait);
     if (state.refreshPending) {
       const samePage = await batch.popup('status');
-      assert.equal(samePage.section, 1);
+      assert.equal(samePage.section, 0);
       assert.equal(samePage.totals.deleted, index + 1);
     }
   }
@@ -241,14 +241,14 @@ const end = async (h, job, result = 'clear') => {
   assert.equal((await recover.popup('acknowledge', { id: paused.id })).status, 'paused');
   assert.equal(recover.badges.at(-1), '');
   const continued = await recover.popup('start', { selection: [0, 1] });
-  assert.equal(continued.section, 0);
+  assert.equal(continued.section, 1);
   assert.equal(continued.status, 'running');
   assert.equal(continued.results.length, 1);
   console.log('PASS bounded timeline recovery, rate-limit hold, and resume from current section');
 
 
   const route = harness();
-  job = await route.popup('start', { selection: [0, 1, 2, 3, 4] });
+  job = await route.popup('start', { selection: [1] });
   assert.equal(job.section, 1);
   const replies = 'https://x.com/sample_user/with_replies';
   const home = 'https://x.com/home';
@@ -272,6 +272,9 @@ const end = async (h, job, result = 'clear') => {
   status = await route.change(job, { url: home });
   assert.equal(status.redirects, 2);
   status = await route.change(job, { url: home });
+  assert.equal(status.replySearch, true);
+  assert.match(route.navigations.at(-1), /filter%3Areplies/);
+  for (let attempt = 0; attempt < 3; attempt++) status = await route.change(status, { url: home });
   assert.equal(status.status, 'paused');
   assert.equal(status.section, 1);
   assert.equal(status.alertPending, true);
@@ -289,7 +292,7 @@ const end = async (h, job, result = 'clear') => {
   console.log('PASS Home redirect recovery and bounded pause, History fallback, auth pause, and stale events');
 
   const refresh = harness();
-  job = await refresh.popup('start', { selection: [0, 1, 2] });
+  job = await refresh.popup('start', { selection: [1] });
   await refresh.tab(job, 'hello');
   refresh.setTab(job, { url: home });
   assert.equal((await refresh.tab(job, 'refresh', { mode: 'recovery', reason: 'Page issue' })).reloading, true);
@@ -304,29 +307,41 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(status.alertPending, true);
   console.log('PASS refresh targets Replies and exhausted page recovery shows a persistent alert');
 
-  const preview = harness();
-  job = await preview.popup('start', { selection: [0, 1, 3], preview: true });
-  await preview.tab(job, 'hello');
-  assert.equal(await preview.tab(job, 'begin', { item: candidate('delete') }), null);
-  for (const found of [12, 5, 22]) {
-    await preview.tab(job, 'hello');
-    job = await preview.tab(job, 'sectionEnd', { result: 'clear', found });
-  }
-  assert.equal(job.status, 'previewed');
+  const search = harness();
+  await assert.rejects(search.popup('start', { selection: [1], preview: true }), /updated X Cleaner/);
+  assert.equal(search.navigations.length, 0);
+  job = await search.popup('start', { selection: [1, 3] });
+  await search.tab(job, 'hello');
+  job = await search.tab(job, 'sectionEnd', { result: 'clear', checkReplySearch: true });
+  const exact = search.navigations.at(-1);
+  const query = new URL(exact);
+  assert.equal(query.searchParams.get('q'), 'from:sample_user filter:replies');
+  assert.equal(query.searchParams.get('f'), 'live');
+  assert.equal(job.section, 1);
   assert.equal(job.pass, 1);
-  assert.deepEqual(job.results.map(result => result.found), [12, 5, 22]);
-  assert.equal(job.totals.deleted, 0);
-  job = await preview.popup('start', { selection: [3] });
-  await preview.tab(job, 'hello');
+  assert.equal(await search.tab(job, 'hello', {}, { url: exact + '&q=from:other' }), null);
+  assert.equal(await search.tab(job, 'hello', {}, { url: exact.replace('sample_user', 'other') }), null);
+  assert.equal(await search.tab(job, 'hello', {}, { url: exact.replace('f=live', 'f=top') }), null);
+  await search.tab(job, 'hello');
+  assert.equal(await search.tab(job, 'begin', { item: candidate('delete', 111, 'other') }), null);
+  await transfer(search, job, 'delete', 112);
+  job = await end(search, job);
+  assert.equal(job.section, 3);
+  assert.equal(job.totals.deleted, 1);
+  console.log('PASS reply search only authorizes the exact account and filter, then continues to Bookmarks');
+
+  const bookmarks = harness();
+  job = await bookmarks.popup('start', { selection: [3] });
+  await bookmarks.tab(job, 'hello');
   const bulk = { kind: 'bookmark-bulk', url: 'https://x.com/i/bookmarks' };
-  assert.ok((await preview.tab(job, 'begin', { item: bulk })).allowed);
-  assert.ok((await preview.tab(job, 'check', { url: bulk.url })).allowed);
-  const cleared = await preview.tab(job, 'settled', { url: bulk.url, ok: true, sent: true });
+  assert.ok((await bookmarks.tab(job, 'begin', { item: bulk })).allowed);
+  assert.ok((await bookmarks.tab(job, 'check', { url: bulk.url })).allowed);
+  const cleared = await bookmarks.tab(job, 'settled', { url: bulk.url, ok: true, sent: true });
   assert.equal(cleared.bookmarksCleared, true);
   assert.equal(cleared.totals.bookmarks, 0);
-  preview.tick(15000);
-  assert.equal(await preview.tab(job, 'begin', { item: bulk }), null);
-  console.log('PASS scan-only route and bookmark bulk action without inventing a count');
+  bookmarks.tick(15000);
+  assert.equal(await bookmarks.tab(job, 'begin', { item: bulk }), null);
+  console.log('PASS bookmark bulk action without inventing a count');
 
   const checkpoint = harness();
   job = await checkpoint.popup('start', { selection: [0, 1, 2] });
@@ -418,7 +433,7 @@ const end = async (h, job, result = 'clear') => {
   await assert.rejects(identity.popup('start', { selection: [0, 1] }), /active account changed/i);
   job = await identity.popup('start', { selection: [0, 1], expectedHandle: 'second_user' });
   assert.equal(job.handle, 'second_user');
-  assert.equal(identity.navigations.at(-1), 'https://x.com/second_user/with_replies');
+  assert.equal(identity.navigations.at(-1), 'https://x.com/second_user');
   await identity.tab(job, 'hello');
   assert.equal(await identity.tab(job, 'begin', { item: candidate('delete') }), null);
   assert.ok((await identity.tab(job, 'begin', { item: candidate('delete', 5, 'second_user') })).allowed);

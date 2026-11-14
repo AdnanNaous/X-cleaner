@@ -64,8 +64,6 @@ label.pace { justify-content: space-between; margin-top: 8px; border-color: #4b4
 .route li[aria-current] span { color: #252525; }
 .route li p { grid-column: 1 / -1; color: #ccc; overflow-wrap: anywhere; }
 
-#preview { margin-top: 7px; background: #000; border-color: #777; color: #fff; }
-#preview:hover:not(:disabled) { background: #252525; }
 #events { margin-top: 12px; color: #bbb; }
 #events summary { cursor: pointer; }
 #event-list { margin: 7px 0 0; padding: 0; list-style: none; }

@@ -19,9 +19,9 @@
     <fieldset id="options">
       <legend>What to clean</legend>
       <div class="options">
-        <label><input type="checkbox" value="replies" checked>Replies</label>
-        <label><input type="checkbox" value="reposts" checked>Reposts</label>
         <label><input type="checkbox" value="posts" checked>Posts</label>
+        <label><input type="checkbox" value="reposts" checked>Reposts</label>
+        <label><input type="checkbox" value="replies" checked>Replies</label>
         <label><input type="checkbox" value="bookmarks" checked>Bookmarks</label>
         <label><input type="checkbox" value="likes" checked>Likes</label>
       </div>
@@ -32,10 +32,7 @@
       <p id="pace-error" class="field-error" hidden>Enter 0–3600 seconds, with up to 3 decimal places.</p>
     </fieldset>
 
-    <button type="button" id="open-x" hidden>Open X</button>
     <button type="button" id="start" disabled>Clean everything</button>
-    <button type="button" id="preview" disabled>Preview route</button>
-    <button type="button" id="stop" hidden>Stop cleanup</button>
     <p class="warning" id="warning">Permanently removes the selected activity.</p>
 
     <section id="achievement" hidden aria-label="Cleanup achievement">

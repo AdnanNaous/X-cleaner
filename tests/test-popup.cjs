@@ -31,6 +31,8 @@ const context = vm.createContext({
     storage: { onChanged: { addListener(listener) { onChange = listener; } } }
   }
 });
+const markup = fs.readFileSync('extension/popup.html', 'utf8');
+assert.deepEqual([...markup.matchAll(/<button[^>]+id="([^"]+)"/g)].map(match => match[1]), ['start', 'acknowledge']);
 for (const name of ['shared', 'popup']) vm.runInContext(fs.readFileSync('extension/' + name + '.js', 'utf8'), context);
 const snapshot = {
   id: 'current', handle: 'sample_user', revision: 8, status: 'running', section: 0, pass: 1, selected: [1, 0],
@@ -43,6 +45,7 @@ responses.detect.resolve({ result: { handle: 'sample_user' } });
 setImmediate(async () => {
   assert.equal(node('deleted').textContent, '1');
   assert.equal(node('message').textContent, snapshot.message);
+  assert.equal(node('start').textContent, 'Stop cleanup');
   onChange({ report: { newValue: { ...snapshot, revision: 9, totals: { deleted: 2 } } } }, 'local');
   assert.equal(node('deleted').textContent, '2');
   console.log('PASS popup updates live and an older status response cannot reset a confirmed count');
@@ -56,7 +59,6 @@ setImmediate(async () => {
   pace.validity.valid = false;
   pace.listeners.input();
   assert.equal(node('start').disabled, true);
-  assert.equal(node('preview').disabled, false);
   assert.equal(node('pace-error').hidden, false);
   pace.valueAsNumber = 0.5;
   pace.validity.valid = true;
@@ -64,6 +66,7 @@ setImmediate(async () => {
   assert.equal(node('start').disabled, false);
   const action = node('start').listeners.click();
   assert.equal(responses.start.message.pace, 500);
+  assert.equal(responses.start.message.preview, undefined);
   assert.deepEqual(Array.from(responses.start.message.selection), [1]);
   responses.start.resolve({ result: { ...snapshot, revision: 11, selected: [1], pace: 500 } });
   await action;
@@ -73,7 +76,7 @@ setImmediate(async () => {
   onChange({ report: { newValue: pause } }, 'local');
   assert.equal(node('interruption').hidden, false);
   assert.equal(node('elapsed').textContent, 'Paused for 1:01');
-  assert.equal(node('start').disabled, true);
+  assert.equal(node('start').hidden, true);
   const confirm = node('acknowledge').listeners.click();
   assert.equal(responses.acknowledge.message.id, pause.id);
   responses.acknowledge.resolve({ result: { ...pause, revision: 13, alertPending: false } });

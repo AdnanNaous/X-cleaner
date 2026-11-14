@@ -5,7 +5,7 @@ const options = [...document.querySelectorAll('#options input[type="checkbox"]')
 const categories = { posts: 0, replies: 1, reposts: 2, bookmarks: 3, likes: 4 };
 const paceInput = get('pace');
 const countKeys = ['deleted', 'reposts', 'bookmarks', 'likes', 'skipped', 'errors'];
-const statuses = { running: 'Running', stopping: 'Stopping', paused: 'Paused', review: 'Needs review', finished: 'Complete', previewed: 'Preview ready' };
+const statuses = { running: 'Running', stopping: 'Stopping', paused: 'Paused', review: 'Needs review', finished: 'Complete' };
 let current;
 let detection;
 let busy = false;
@@ -20,12 +20,20 @@ async function request(type, fields) {
 }
 
 function selection() {
-  return options.filter(box => box.checked).map(box => categories[box.value]);
+  const selected = options.filter(box => box.checked).map(box => categories[box.value]);
+  return Cleaner.sectionOrder.filter(index => selected.includes(index));
 }
 
 function enteredPace() {
   const milliseconds = Math.round(paceInput.valueAsNumber * 1000);
   return paceInput.validity.valid && Cleaner.validPace(milliseconds) ? milliseconds : null;
+}
+
+function mainAction() {
+  if (['running', 'stopping'].includes(current?.status)) return 'stop';
+  if (current?.alertPending) return 'acknowledge';
+  if (!detection?.handle && detection?.reason?.startsWith('Open')) return 'openX';
+  return 'start';
 }
 
 function renderCountdown() {
@@ -41,9 +49,9 @@ function renderCountdown() {
   elapsed.hidden = !pausedForX;
   elapsed.textContent = pausedForX ? 'Paused for ' + Cleaner.elapsedSince(current.pausedAt) : '';
   const rateHold = Boolean(current?.handle === detection?.handle && current?.ratePaused && seconds > 0);
-  const disabled = busy || !detection?.handle || !selection().length || rateHold || Boolean(current?.alertPending);
-  get('start').disabled = disabled || enteredPace() === null;
-  get('preview').disabled = disabled;
+  const action = mainAction();
+  get('start').disabled = busy || current?.status === 'stopping' ||
+    (action === 'start' && (!detection?.handle || !selection().length || rateHold || enteredPace() === null));
 }
 
 function render() {
@@ -54,32 +62,26 @@ function render() {
   const report = active || sameAccount || current?.alertPending || (!detection?.handle && current?.status === 'paused') ? current : null;
   get('account').textContent = active && current.handle ? '@' + current.handle
     : detection?.handle ? '@' + detection.handle : 'Account not detected';
-  get('open-x').hidden = active || !detection || Boolean(detection.handle) ||
-    !detection.reason?.startsWith('Open');
   const resume = same && sameAccount && !current?.preview && ['paused', 'review'].includes(current?.status);
-  const resumePreview = same && sameAccount && current?.preview && ['paused', 'review'].includes(current.status);
-  get('status').textContent = active && current.preview ? 'Previewing' : statuses[report?.status] || 'Ready';
+  get('status').textContent = statuses[report?.status] || 'Ready';
   get('options').disabled = active || busy;
   const invalidPace = enteredPace() === null;
   paceInput.setAttribute('aria-invalid', String(invalidPace));
   get('pace-error').hidden = !invalidPace;
-  get('start').hidden = active;
   renderCountdown();
-  get('start').textContent = resume ? (current.status === 'review' ? 'Retry cleanup' : 'Continue cleanup') : selected.length === 5 ? 'Clean everything' : 'Clean selected';
-  get('preview').hidden = active;
-  get('preview').textContent = resumePreview ? (current.status === 'review' ? 'Retry preview' : 'Continue preview') : 'Preview route';
-  get('stop').hidden = !active;
-  get('stop').textContent = current?.preview ? 'Stop preview' : 'Stop cleanup';
-  get('stop').disabled = busy || current?.status === 'stopping';
+  const action = mainAction();
+  get('start').hidden = action === 'acknowledge';
+  get('start').textContent = action === 'stop' ? 'Stop cleanup' : action === 'openX' ? 'Open X'
+    : resume ? (current.status === 'review' ? 'Retry cleanup' : 'Continue cleanup')
+      : selected.length === Cleaner.sections.length ? 'Clean everything' : 'Clean selected';
   get('warning').textContent = active ? 'Keep the cleanup tab open.' : 'Permanently removes the selected activity.';
-  document.querySelector('.stats').hidden = Boolean(report?.preview);
   get('achievement').hidden = report?.status !== 'finished';
 
   const messageText = report?.message;
   const [message, link] = (messageText || detection?.reason || 'Ready to scan your X account.').split(' Check the last attempted item: ');
   get('message').textContent = message;
   get('interruption').hidden = !report?.alertPending;
-  get('interrupt-title').textContent = report?.preview ? 'Preview stopped' : 'Cleanup stopped';
+  get('interrupt-title').textContent = 'Cleanup stopped';
   get('interrupt-reason').textContent = report?.alertPending ? message : '';
   get('acknowledge').disabled = busy;
   get('message').hidden = Boolean(report?.alertPending);
@@ -111,7 +113,7 @@ function renderRoute(state, selected) {
     const label = document.createElement('span');
     title.textContent = name;
     label.textContent = active ? (state.status === 'paused' ? 'Paused here' : 'Current')
-      : result?.status === 'clear' ? (state.preview ? result.found.toLocaleString() + ' found' : 'Scanned')
+      : result?.status === 'clear' ? 'Scanned'
         : result ? 'Needs review' : 'Queued';
     item.append(title, label);
     if (result?.status === 'review') {
@@ -167,13 +169,14 @@ for (const box of options) box.addEventListener('change', () => {
   render();
 });
 
-async function action(type, preview = false) {
+async function action(type) {
   const pace = enteredPace();
-  if (type === 'start' && (current?.alertPending || (!preview && pace === null))) return;
+  if (type === 'start' && (current?.alertPending || pace === null)) return;
   busy = true;
   render();
   try {
-    const fields = type === 'start' ? { selection: selection(), pace: pace ?? undefined, preview, expectedHandle: detection?.handle } : type === 'acknowledge' ? { id: current?.id } : {};
+    const fields = type === 'start' ? { selection: selection(), pace, expectedHandle: detection?.handle }
+      : type === 'acknowledge' ? { id: current?.id } : {};
     setState(await request(type, fields));
     busy = false;
     render();
@@ -184,12 +187,7 @@ async function action(type, preview = false) {
   }
 }
 
-get('open-x').addEventListener('click', () => request('openX').catch(error => {
-  get('message').textContent = error.message;
-}));
-get('start').addEventListener('click', () => action('start'));
-get('preview').addEventListener('click', () => action('start', true));
-get('stop').addEventListener('click', () => action('stop'));
+get('start').addEventListener('click', () => action(mainAction()));
 get('acknowledge').addEventListener('click', () => action('acknowledge'));
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.report?.newValue) {

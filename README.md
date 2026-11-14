@@ -6,9 +6,9 @@
 
 Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.1.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.2.zip?raw=true)
 
-**Version 1.6.1 · ZIP · Manual installation on desktop Chromium browsers**
+**Version 1.6.2 · ZIP · Manual installation on desktop Chromium browsers**
 
 ## Install and run
 
@@ -16,7 +16,7 @@ The images below use real Windows and Chrome screenshots with arrows and X Clean
 
 ### 1. Extract the ZIP
 
-On Windows, right-click `X-Cleaner-1.6.1.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+On Windows, right-click `X-Cleaner-1.6.2.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
 
 ![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
 
@@ -28,20 +28,21 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Select the entire extracted **X-Cleaner-1.6.1** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.6.2** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
 ![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
 
 ### 4. Open X Cleaner on X
 
 1. Sign in at [x.com](https://x.com). On that tab, click the **Extensions** icon (1) and choose **X Cleaner** (2). You can pin it for faster access.
-2. Check your displayed handle and choose one or more categories. The route follows **Replies → Reposts → Posts → Bookmarks → Likes**, skipping unchecked categories.
-3. Choose **Preview route** to scan without removing anything.
-4. Choose **Clean selected** or **Clean everything** to remove the selected activity. Deletions are permanent. Keep the cleanup tab open and use **Stop cleanup** if you need to stop the run.
+2. Check your displayed handle and choose one or more categories. The route follows **Posts → Reposts → Replies → Bookmarks → Likes**, skipping unchecked categories.
+3. Choose **Clean selected** or **Clean everything** to remove the selected activity. Deletions are permanent. Keep the cleanup tab open and use **Stop cleanup** if you need to stop the run.
 
 ![Chrome Extensions menu showing where to open X Cleaner](./docs/images/04-use.png)
 
 Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-unzip-file-windows/), [Chrome for Developers](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), and [ViewGrip](https://www.viewgrip.net/help/how-to-install-viewgrip-extension-on-chrome).
+
+Replies can also use X Search filtered to the signed-in account when the profile timeline does not identify reply cards.
 
 **Delay between actions** defaults to 15 seconds. Enter a value from 0 to 3600 seconds, including decimals like 0.5. At 0, the next action can start after the previous action is verified. The 45-second break after six actions and pauses for X restrictions still apply.
 

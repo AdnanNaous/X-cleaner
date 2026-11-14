@@ -14,7 +14,7 @@ globalThis.Cleaner = Object.freeze({
     const minutes = Math.floor(seconds / 60);
     return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
   },
-  sectionOrder: [1, 2, 0, 3, 4],
+  sectionOrder: [0, 2, 1, 3, 4],
   sections: [
     { name: 'Posts', suffix: '' },
     { name: 'Replies', suffix: '/with_replies' },
@@ -40,11 +40,23 @@ globalThis.Cleaner = Object.freeze({
     if (!name) throw new Error('The signed-in X account is required.');
     return this.origin + '/' + name + section.suffix;
   },
-  sectionTarget(index, handle, history = false) {
+  replySearchUrl(handle) {
+    const name = this.normalizeHandle(handle);
+    if (!name) throw new Error('The signed-in X account is required.');
+    return this.origin + '/search?q=' + encodeURIComponent('from:' + name + ' filter:replies') + '&f=live';
+  },
+  sectionTarget(index, handle, history = false, replySearch = false) {
+    if (index === 1 && replySearch) return this.replySearchUrl(handle);
     return history ? this.origin + '/i/history' : this.sectionUrl(index, handle);
   },
-  atSection(index, url, handle, history = false) {
+  atSection(index, url, handle, history = false, replySearch = false) {
     const path = this.route(url);
+    if (index === 1 && replySearch) {
+      if (path !== '/search') return false;
+      const query = new URL(url).searchParams;
+      return query.getAll('q').length === 1 && query.getAll('f').length === 1 &&
+        query.get('q') === 'from:' + this.normalizeHandle(handle) + ' filter:replies' && query.get('f') === 'live';
+    }
     if (path === this.route(this.sectionUrl(index, handle))) return true;
     if ((index === 3 || index === 4) && (history || index === 3)) {
       const tab = index === 3 ? 'bookmarks' : 'likes';
