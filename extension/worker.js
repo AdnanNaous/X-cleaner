@@ -5,6 +5,7 @@ const { sections } = Cleaner;
 const MAX_PASSES = 4;
 const STORAGE = 'job';
 const MAX_ITEM_ATTEMPTS = 2;
+const WATCHDOG = 'cleanup-health';
 let queue = Promise.resolve();
 let badgeText;
 
@@ -57,6 +58,26 @@ async function write(job) {
       console.warn('Could not update the X Cleaner badge.', error);
     }
   }
+  if (!['running', 'stopping'].includes(job.status)) await releaseTab(job);
+}
+
+async function protectTab(job) {
+  const tab = await chrome.tabs.get(job.tabId);
+  job.originalAutoDiscardable ??= tab.autoDiscardable !== false;
+  await chrome.tabs.update(job.tabId, { autoDiscardable: false });
+  if (chrome.alarms && !await chrome.alarms.get(WATCHDOG)) {
+    await chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+  }
+}
+
+async function releaseTab(job) {
+  if (chrome.alarms) await chrome.alarms.clear(WATCHDOG);
+  if (job.originalAutoDiscardable === undefined) return;
+  try {
+    await chrome.tabs.update(job.tabId, { autoDiscardable: job.originalAutoDiscardable });
+  } catch {
+    // The cleanup tab may have been closed.
+  }
 }
 
 async function pause(job, reason, kind = 'issue') {
@@ -87,8 +108,11 @@ async function navigate(job, { refresh = false } = {}) {
   const target = Cleaner.sectionTarget(job.section, job.handle, job.history, job.replySearch);
   job.documentId = null;
   job.refreshAt = Date.now() + Cleaner.refreshInterval;
-  await write(job);
+  job.actionsSinceRefresh = 0;
+  job.lastContact = Date.now();
   try {
+    await protectTab(job);
+    await write(job);
     const tab = await chrome.tabs.get(job.tabId);
     if (refresh && atSection(job, tab.url) && !tab.pendingUrl) {
       await chrome.tabs.reload(job.tabId, { bypassCache: true });
@@ -98,6 +122,52 @@ async function navigate(job, { refresh = false } = {}) {
   } catch {
     await pause(job, 'The cleanup tab is unavailable. Continue cleanup to reopen it.');
   }
+}
+
+async function checkHealth() {
+  const job = await read();
+  if (!job || !['running', 'stopping'].includes(job.status)) {
+    if (chrome.alarms) await chrome.alarms.clear(WATCHDOG);
+    return;
+  }
+  let tab;
+  try {
+    tab = await chrome.tabs.get(job.tabId);
+  } catch {
+    await pause(job, 'The cleanup tab closed. Continue cleanup to reopen it.');
+    return;
+  }
+  if (tab.pendingUrl || tab.status === 'loading') {
+    if (Date.now() - job.lastContact < 90000) return;
+  } else if (!atSection(job, tab.url)) {
+    await recoverRoute(job, tab.url);
+    return;
+  }
+  if (tab.frozen) {
+    await chrome.tabs.update(job.tabId, { active: true });
+    job.message = 'Chrome suspended the cleanup tab. Reactivating it.';
+    addEvent(job, job.message);
+    await write(job);
+  }
+  if (job.status === 'stopping') {
+    if (!job.pending || Date.now() - (job.actionStartedAt || job.lastContact) > 60000) {
+      await pause(job, 'Stopped. The last unconfirmed action will be checked when you continue.', 'manual');
+    }
+    return;
+  }
+  const deadline = Math.max(job.lastContact || 0, job.nextActionAt || 0);
+  const stalledLoad = (tab.pendingUrl || tab.status === 'loading') &&
+    Date.now() - (job.lastContact || 0) >= 90000;
+  if (!tab.discarded && !stalledLoad && Date.now() - deadline < 90000) return;
+  if ((job.watchdogRecoveries || 0) >= 2) {
+    await pause(job, 'The cleanup page stopped responding after two reloads. Check X, then continue cleanup.');
+    return;
+  }
+  job.watchdogRecoveries = (job.watchdogRecoveries || 0) + 1;
+  recordInterruptedAction(job, 'The page stopped responding before the last action was confirmed.');
+  job.message = 'The cleanup page stopped responding. Reloading and resuming this section.';
+  addEvent(job, job.message);
+  await navigate(job, { refresh: true });
 }
 
 async function openSection(job) {
@@ -179,7 +249,7 @@ async function recoverRoute(job, url) {
   await pause(job, detail + ' The redirect persisted after two retries. Try again later.', 'x');
 }
 
-async function start(old, selection, pace, accountHandle) {
+async function start(old, selection, pace, accountHandle, paceMode) {
   if (old?.status === 'running' || old?.status === 'stopping' ||
       old?.alertPending || (old?.handle === accountHandle && old.ratePaused && old.waitUntil > Date.now())) return old;
   const selected = Cleaner.sectionOrder.filter(index => Array.isArray(selection) && selection.includes(index));
@@ -214,11 +284,14 @@ async function start(old, selection, pace, accountHandle) {
     events: keep ? old.events || [] : [],
     section: resume ? old.section : selected[0], pass: resume ? old.pass : 1,
     documentId: null, pending: null, nextActionAt: old?.handle === accountHandle ? old.nextActionAt || 0 : 0,
-    pace,
+    pace, paceMode, successStreak: 0, watchdogRecoveries: 0,
     changes: resume ? old.changes : 0, results: resume ? old.results : [],
     totals: keep ? old.totals : { deleted: 0, reposts: 0, bookmarks: 0, likes: 0, skipped: 0, errors: 0 },
     message: '', problem: keep ? old.problem : null
   };
+  if (old?.handle === accountHandle && old.tabId === tab.id) {
+    job.originalAutoDiscardable = old.originalAutoDiscardable;
+  }
   await openSection(job);
   return job;
 }
@@ -261,7 +334,7 @@ async function refreshSection(job, message) {
   const mode = message.mode;
   if (mode === 'tail' && !job.batchActions) return null;
   if (mode === 'items' && job.itemsRechecked) return { exhausted: true };
-  if (mode === 'periodic' && (!job.refreshAt || Date.now() < job.refreshAt)) return null;
+  if (mode === 'periodic' && !Cleaner.refreshDue(job)) return null;
   if (mode === 'recovery' && job.recoveries >= 2) return { exhausted: true };
   if (!['tail', 'items', 'periodic', 'recovery'].includes(mode)) return null;
 
@@ -276,7 +349,7 @@ async function refreshSection(job, message) {
     job.nextActionAt = Math.max(job.nextActionAt, Date.now() + Cleaner.itemRetryRest);
     addEvent(job, `${sections[job.section].name} · Rechecking deferred items`);
   } else if (mode === 'periodic') {
-    addEvent(job, `${sections[job.section].name} · Scheduled 10-minute refresh`);
+    addEvent(job, `${sections[job.section].name} · Refreshing the timeline checkpoint`);
   }
   if (mode !== 'periodic') {
     job.batchActions = 0;
@@ -351,8 +424,11 @@ async function handle(message, sender) {
       ? await pause(old, 'Cleanup was interrupted. When X is ready, choose Continue cleanup.') : old;
     const pace = message.pace === undefined ? (previous?.handle === detected.handle
       ? previous.pace ?? Cleaner.defaultPace : Cleaner.defaultPace) : message.pace;
+    const paceMode = message.paceMode === 'auto' ? 'auto'
+      : message.paceMode === 'manual' || message.pace !== undefined ? 'manual'
+        : previous?.handle === detected.handle ? previous.paceMode || 'auto' : 'auto';
     if (message.preview === true) throw new Error('Reopen the updated X Cleaner popup to start cleanup.');
-    return start(previous, message.selection, pace, detected.handle);
+    return start(previous, message.selection, paceMode === 'auto' ? 10000 : pace, detected.handle, paceMode);
   }
   if (!job?.handle) return null;
   const fromTab = sender.tab?.id === job.tabId && sender.frameId === 0;
@@ -375,6 +451,7 @@ async function handle(message, sender) {
     }
     job.documentId = sender.documentId;
     job.refreshAt ||= Date.now() + Cleaner.refreshInterval;
+    job.lastContact = Date.now();
     await write(job);
     return job;
   }
@@ -387,8 +464,10 @@ async function handle(message, sender) {
     return job;
   }
   if (!atSection(job, sender.url)) return null;
+  job.lastContact = Date.now();
 
   if (message.type === 'settled' && job.pending?.url === message.url) {
+    const duration = Date.now() - (job.actionStartedAt || Date.now());
     if (message.ok) {
       const kind = job.pending.kind;
       const key = itemKey(job.pending);
@@ -403,6 +482,7 @@ async function handle(message, sender) {
         if (kind === 'delete') job.message = `Delete confirmed · ${job.totals.deleted} deleted this run.`;
       }
       job.changes++;
+      job.watchdogRecoveries = 0;
       job.recoveries = 0;
       if (job.itemFailures) delete job.itemFailures[key];
       if (job.problem?.url === message.url) job.problem = null;
@@ -415,7 +495,13 @@ async function handle(message, sender) {
       job.problem = { text: detail + retry, url: message.url };
       addEvent(job, `${sections[job.section].name} · ${detail}${retry}`);
     }
-    if (message.sent || message.ok) job.batchActions++;
+    if (message.sent || message.ok) {
+      job.batchActions++;
+      job.actionsSinceRefresh = (job.actionsSinceRefresh || 0) + 1;
+    }
+    if (job.paceMode === 'auto' && !message.cancelled) {
+      job.pace = Cleaner.automaticPace(job, message.ok === true, duration);
+    }
     if (job.pending.kind === 'bookmark-bulk' && message.ok) job.batchActions = 1;
     job.nextActionAt = Math.max(job.nextActionAt || 0, Date.now() + (job.pace ?? Cleaner.defaultPace));
     if (!job.refreshPending && job.batchActions >= Cleaner.batchSize) {
@@ -476,6 +562,7 @@ async function handle(message, sender) {
     }
     if (target === 'bookmark-bulk') job.bookmarkBulkTried = true;
     job.pending = message.item;
+    job.actionStartedAt = Date.now();
     job.waitUntil = 0;
     await write(job);
     return { allowed: true };
@@ -535,3 +622,17 @@ chrome.tabs.onUpdated.addListener((tabId, change, eventTab) => {
     await recoverRoute(job, tab.url);
   }).catch(console.error);
 });
+
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === WATCHDOG) serial(checkHealth).catch(console.error);
+  });
+  serial(async () => {
+    const job = await read();
+    if (job && ['running', 'stopping'].includes(job.status)) {
+      if (!await chrome.alarms.get(WATCHDOG)) await chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+    } else {
+      await chrome.alarms.clear(WATCHDOG);
+    }
+  }).catch(console.error);
+}

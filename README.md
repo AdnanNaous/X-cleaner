@@ -6,9 +6,9 @@
 
 Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.6.2.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.0.zip?raw=true)
 
-**Version 1.6.2 · ZIP · Manual installation on desktop Chromium browsers**
+**Version 1.7.0 · ZIP · Manual installation on desktop Chromium browsers**
 
 ## Install and run
 
@@ -16,7 +16,7 @@ The images below use real Windows and Chrome screenshots with arrows and X Clean
 
 ### 1. Extract the ZIP
 
-On Windows, right-click `X-Cleaner-1.6.2.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+On Windows, right-click `X-Cleaner-1.7.0.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
 
 ![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
 
@@ -28,7 +28,7 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Select the entire extracted **X-Cleaner-1.6.2** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.7.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
 ![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
 
@@ -44,13 +44,15 @@ Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-u
 
 Replies can also use X Search filtered to the signed-in account when the profile timeline does not identify reply cards.
 
-**Delay between actions** defaults to 15 seconds. Enter a value from 0 to 3600 seconds, including decimals like 0.5. At 0, the next action can start after the previous action is verified. The 45-second break after six actions and pauses for X restrictions still apply.
+**Speed** defaults to **Automatic**. It starts with 10-second waits, moves to 4 then 3 seconds after repeated quick confirmations, and slows to 15 seconds after an error or slow response. For a fixed wait, choose **Custom delay** and enter 0–3600 seconds. Every action is verified before the next one. A 45-second break follows six actions. The popup keeps the counters visible and places the route and activity log under **Details**.
 
 To update an unpacked installation, extract the new ZIP over your existing extension folder and click **Reload** on the X Cleaner card in your browser’s extensions page.
 
-The cleanup tab refreshes after 10 minutes on the same page, once the current action is settled. The run keeps its place, totals, and cooldown. Cards ignored are outside the selected cleanup or shown for context. Eligible items that could not be processed are rechecked after a short break. Persistent failures appear under **Needs review**.
+The cleanup tab fully refreshes after 10 minutes or 40 actions on the same page, once the current action is settled. The run keeps its place, totals, and cooldown. Cards ignored are outside the selected cleanup or shown for context. Eligible items that could not be processed are rechecked after a short break. Persistent failures appear under **Needs review**.
 
 When X shows a rate limit or account restriction, cleanup stops and displays the reason and elapsed pause time. The alert stays visible until you select **OK**. Resume manually once X is ready. The 5-minute wait after a rate limit is the extension’s minimum.
+
+While cleanup runs, X Cleaner protects its tab from Chrome’s automatic memory discard. A health check reactivates a frozen tab or reloads an unresponsive page, with bounded retries and saved counts. Stop or completion restores the tab’s previous discard setting. Keep Chrome open. Device sleep, browser shutdown, and operating-system memory limits can still interrupt a run.
 
 ## Browser compatibility
 
@@ -73,7 +75,7 @@ The ZIP targets desktop Chromium. Compatibility with each listed Chromium browse
 
 ## Privacy and limits
 
-The extension reads the signed-in handle from the page and stores the run and its results locally in the browser. It does not collect credentials, cookies, or analytics, or send reports to a third-party service. The cleaner only works with items X makes available in its interface. X prohibits non-API automation and can restrict accounts under its [automation rules](https://help.x.com/en/rules-and-policies/x-automation).
+The extension uses the storage permission for progress and the alarms permission for its cleanup health check. It reads the signed-in handle from the page and stores the run and its results locally in the browser. It does not collect credentials, cookies, or analytics, or send reports to a third-party service. The cleaner only works with items X makes available in its interface. X prohibits non-API automation and can restrict accounts under its [automation rules](https://help.x.com/en/rules-and-policies/x-automation).
 
 ## Tests
 

@@ -14,6 +14,7 @@ const node = id => {
   return elements.get(id);
 };
 Object.assign(node('pace'), { value: '15', valueAsNumber: 15, validity: { valid: true } });
+node('pace-mode').value = 'auto';
 let onChange;
 const responses = {};
 const options = ['replies', 'reposts', 'posts', 'bookmarks', 'likes'].map(value =>
@@ -36,7 +37,7 @@ assert.deepEqual([...markup.matchAll(/<button[^>]+id="([^"]+)"/g)].map(match => 
 for (const name of ['shared', 'popup']) vm.runInContext(fs.readFileSync('extension/' + name + '.js', 'utf8'), context);
 const snapshot = {
   id: 'current', handle: 'sample_user', revision: 8, status: 'running', section: 0, pass: 1, selected: [1, 0],
-  pace: 15000, totals: { deleted: 1 }, message: 'Delete confirmed · 1 deleted this run.'
+  pace: 15000, paceMode: 'manual', totals: { deleted: 1 }, message: 'Delete confirmed · 1 deleted this run.'
 };
 onChange({ report: { newValue: snapshot } }, 'local');
 assert.equal(node('deleted').textContent, '1');
@@ -85,4 +86,18 @@ setImmediate(async () => {
   assert.equal(node('elapsed').hidden, false);
   assert.equal(node('start').disabled, true);
   console.log('PASS persistent pause alert, elapsed counter, and acknowledgement leaves rate hold active');
+  onChange({ report: { newValue: { ...pause, revision: 14, ratePaused: false, waitUntil: 0, alertPending: false } } }, 'local');
+  node('pace-mode').value = 'auto';
+  node('pace-mode').listeners.change();
+  assert.equal(node('manual-pace').hidden, true);
+  pace.valueAsNumber = NaN;
+  pace.validity.valid = false;
+  pace.listeners.input();
+  assert.equal(node('start').disabled, false);
+  const automatic = node('start').listeners.click();
+  assert.equal(responses.start.message.paceMode, 'auto');
+  assert.equal(responses.start.message.pace, 10000);
+  responses.start.resolve({ result: { ...snapshot, revision: 15, paceMode: 'auto', pace: 10000 } });
+  await automatic;
+  console.log('PASS Automatic ignores the hidden custom field and uses the same cleanup button');
 });

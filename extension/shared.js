@@ -9,6 +9,21 @@ globalThis.Cleaner = Object.freeze({
   rateRest: 300000,
   itemRetryRest: 30000,
   refreshInterval: 600000,
+  refreshActions: 40,
+  refreshDue(job) {
+    return Boolean(job.refreshAt && Date.now() >= job.refreshAt) ||
+      (job.actionsSinceRefresh || 0) >= this.refreshActions;
+  },
+  automaticPace(job, success, duration = 0) {
+    if (!success || duration > 8000) {
+      job.successStreak = 0;
+      return 15000;
+    }
+    job.successStreak = (job.successStreak || 0) + 1;
+    if (job.successStreak >= 12) return 3000;
+    if (job.successStreak >= 4) return 4000;
+    return 10000;
+  },
   elapsedSince(start) {
     const seconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
     const minutes = Math.floor(seconds / 60);

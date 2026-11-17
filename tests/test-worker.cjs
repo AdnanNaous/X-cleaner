@@ -9,6 +9,7 @@ function harness() {
   const navigations = [];
   const reloads = [];
   const badges = [];
+  const alarms = new Map();
   const origin = 'chrome-extension://test/';
   const tabs = new Map();
   let nextTabId = 10;
@@ -24,6 +25,12 @@ function harness() {
     runtime: { getURL: name => origin + name, onMessage: hook('message') },
     storage,
     action: { setBadgeText: async ({ text }) => { badges.push(text); } },
+    alarms: {
+      get: async name => alarms.get(name),
+      create: async (name, details) => { alarms.set(name, details); },
+      clear: async name => alarms.delete(name),
+      onAlarm: hook('alarm')
+    },
     tabs: {
       query: async () => [{ id: 5, url: activeUrl }],
       sendMessage: async () => ({ handle: activeAccount }),
@@ -32,7 +39,10 @@ function harness() {
         tabs.set(tab.id, tab);
         return { ...tab };
       },
-      get: async id => ({ ...tabs.get(id) }),
+      get: async id => {
+        if (!tabs.has(id)) throw new Error('Tab closed');
+        return { ...tabs.get(id) };
+      },
       update: async (id, details) => {
         const tab = tabs.get(id);
         if (details.url) {
@@ -41,6 +51,8 @@ function harness() {
         }
         delete tab.pendingUrl;
         tab.status = 'complete';
+        if (details.autoDiscardable !== undefined) tab.autoDiscardable = details.autoDiscardable;
+        if (details.active) tab.frozen = false;
         return { ...tab };
       },
       reload: async (id, options) => { reloads.push({ id, options }); },
@@ -55,7 +67,12 @@ function harness() {
   const send = (message, sender) => new Promise((resolve, reject) =>
     callbacks.message(message, sender, response => response.error ? reject(Error(response.error)) : resolve(response.result)));
   return {
-    stores, navigations, reloads, badges,
+    stores, navigations, reloads, badges, alarms,
+    getTab: job => ({ ...tabs.get(job.tabId) }),
+    alarm: async () => {
+      callbacks.alarm({ name: 'cleanup-health' });
+      return send({ type: 'status' }, { url: origin + 'popup.html' });
+    },
     setAccount: (account, url = 'https://x.com/home') => { activeAccount = account; activeUrl = url; },
     setTab: (job, details) => Object.assign(tabs.get(job.tabId), details),
     change: (job, details, eventTab = details) => {
@@ -94,7 +111,8 @@ const end = async (h, job, result = 'clear') => {
   await h.tab(job, 'hello');
   assert.equal(await h.tab(job, 'begin', { item: candidate('delete', 20, 'someone') }), null);
   assert.equal(await h.tab(job, 'begin', { item: candidate('like') }), null);
-  assert.equal(job.pace, 15000);
+  assert.equal(job.paceMode, 'auto');
+  assert.equal(job.pace, 10000);
   assert.equal(await h.tab(job, 'begin', { item: candidate('repost') }), null);
   await transfer(h, job, 'delete', 100);
   job = await end(h, job);
@@ -423,6 +441,68 @@ const end = async (h, job, result = 'clear') => {
   assert.equal((await retry.tab(job, 'settled', { url: deferred.url, ok: true })).totals.deleted, 1);
   assert.ok((await retry.tab(job, 'refresh', { mode: 'items' })).exhausted);
   console.log('PASS temporary failure is retried after a bounded cooldown');
+
+  const automatic = harness();
+  job = await automatic.popup('start', { selection: [4], paceMode: 'auto' });
+  assert.equal(automatic.getTab(job).autoDiscardable, false);
+  assert.ok(automatic.alarms.has('cleanup-health'));
+  await automatic.tab(job, 'hello');
+  for (let index = 1; index <= 12; index++) {
+    const item = candidate('like', 2000 + index);
+    assert.ok((await automatic.tab(job, 'begin', { item })).allowed);
+    automatic.tick(1000);
+    const settled = await automatic.tab(job, 'settled', { url: item.url, ok: true });
+    assert.equal(settled.pace, index < 4 ? 10000 : index < 12 ? 4000 : 3000);
+    automatic.tick(60000);
+  }
+  const slow = candidate('like', 2050);
+  assert.ok((await automatic.tab(job, 'begin', { item: slow })).allowed);
+  const slowed = await automatic.tab(job, 'settled', { url: slow.url, ok: false });
+  assert.equal(slowed.pace, 15000);
+  assert.equal(slowed.successStreak, 0);
+  await automatic.popup('stop');
+  assert.equal(automatic.getTab(job).autoDiscardable, true);
+  assert.equal(automatic.alarms.has('cleanup-health'), false);
+  console.log('PASS Automatic adapts from 10 to 4 to 3 seconds and slows on failure, restoring tab policy on Stop');
+
+  const watchdog = harness();
+  job = await watchdog.popup('start', { selection: [0], pace: 300000 });
+  await watchdog.tab(job, 'hello');
+  const waiting = candidate('delete', 3000);
+  assert.ok((await watchdog.tab(job, 'begin', { item: waiting })).allowed);
+  await watchdog.tab(job, 'settled', { url: waiting.url, ok: true });
+  watchdog.tick(120000);
+  await watchdog.alarm();
+  assert.equal(watchdog.reloads.length, 0);
+  watchdog.setTab(job, { frozen: true });
+  await watchdog.alarm();
+  assert.equal(watchdog.getTab(job).frozen, false);
+  assert.equal(watchdog.reloads.length, 0);
+  watchdog.tick(300000);
+  job = await watchdog.alarm();
+  assert.equal(watchdog.reloads.length, 1);
+  assert.equal(job.totals.deleted, 1);
+  assert.equal(job.section, 0);
+  watchdog.tick(90001);
+  job = await watchdog.alarm();
+  assert.equal(watchdog.reloads.length, 2);
+  watchdog.tick(90001);
+  job = await watchdog.alarm();
+  assert.equal(job.status, 'paused');
+  assert.equal(job.alertPending, true);
+  assert.equal(watchdog.getTab(job).autoDiscardable, true);
+  watchdog.tick(90001);
+  await watchdog.alarm();
+  assert.equal(watchdog.reloads.length, 2);
+  console.log('PASS health alarm respects long waits, wakes frozen tabs, bounds reloads, and preserves progress');
+
+  const checkpointRefresh = harness();
+  job = await checkpointRefresh.popup('start', { selection: [4], pace: 0 });
+  await checkpointRefresh.tab(job, 'hello');
+  checkpointRefresh.stores.session.job.actionsSinceRefresh = 40;
+  assert.ok((await checkpointRefresh.tab(job, 'refresh', { mode: 'periodic' })).reloading);
+  assert.equal((await checkpointRefresh.popup('status')).actionsSinceRefresh, 0);
+  console.log('PASS forty-action checkpoint forces a full refresh before continuing');
 
   const identity = harness();
   assert.equal((await identity.popup('detect')).handle, 'sample_user');

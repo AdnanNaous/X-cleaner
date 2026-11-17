@@ -32,6 +32,18 @@
     'تم حذف المنشور', 'تم حذف منشورك'
   ]);
   const undoLabels = new Set(['undo repost', 'undo retweet', 'التراجع عن إعادة النشر', 'إلغاء إعادة النشر']);
+  const toggleLabels = {
+    repost: ['undo repost', 'undo retweet', 'reposted', 'التراجع عن إعادة النشر', 'إلغاء إعادة النشر', 'أعدت النشر'],
+    bookmark: ['remove bookmark', 'remove from bookmarks', 'bookmarked', 'إزالة العلامة المرجعية', 'إزالة من العلامات المرجعية'],
+    like: ['unlike', 'liked', 'إلغاء الإعجاب', 'إزالة الإعجاب']
+  };
+  const addLabels = {
+    repost: ['repost', 'retweet', 'إعادة النشر'],
+    bookmark: ['bookmark', 'add bookmark', 'add to bookmarks', 'إضافة علامة مرجعية', 'إضافة إلى العلامات المرجعية'],
+    like: ['like', 'إعجاب']
+  };
+  const bookmarkNotices = new Set(['removed from your bookmarks', 'post removed from your bookmarks',
+    'تمت الإزالة من علاماتك المرجعية', 'تمت إزالة المنشور من العلامات المرجعية']);
   const repostLabels = new Set(['you reposted', 'you retweeted', 'لقد أعدت النشر', 'أعدت النشر', 'قمت بإعادة النشر']);
   const historyLabels = {
     3: new Set(['bookmarks', 'العلامات المرجعية']),
@@ -152,11 +164,18 @@
 
   function parseCard(card) {
     const permalink = /^\/([a-z0-9_]{1,15})\/status\/(\d{1,22})$/;
-    const matchRoutes = links => [...new Set(links.map(link => Cleaner.route(link?.href))
+    const header = owned(card, AUTHOR);
+    const authors = [...new Set(all(header, 'a[href]').map(link => profileHandle(link.href)).filter(Boolean))];
+    const route = link => {
+      const path = Cleaner.route(link?.href);
+      const web = path?.match(/^\/i\/(?:web\/)?status\/(\d{1,22})$/);
+      return web && authors.length === 1 ? '/' + authors[0] + '/status/' + web[1] : path;
+    };
+    const matchRoutes = links => [...new Set(links.map(route)
       .filter(path => permalink.test(path)))];
     const timestamps = matchRoutes(all(card, 'time').filter(node => cardMarkup(card, node))
       .map(node => node.closest('a[href]')));
-    const routes = timestamps.length ? timestamps : matchRoutes(all(owned(card, AUTHOR), 'a[href*="/status/"]')
+    const routes = timestamps.length ? timestamps : matchRoutes(all(header, 'a[href*="/status/"]')
       .filter(node => !node.closest('[data-testid="quoteTweet"], [data-testid="card.wrapper"]')));
     const match = routes.length === 1 ? routes[0].match(permalink) : null;
     if (!match) return null;
@@ -184,15 +203,45 @@
 
   function identify(card, data = parseCard(card)) {
     if (!data) return null;
-    if (job.section === 3) return owned(card, '[data-testid="removeBookmark"]') ? 'bookmark' : null;
-    if (job.section === 4) return owned(card, '[data-testid="unlike"]') ? 'like' : null;
+    if (job.section === 3) {
+      return toggle(card, 'bookmark') || (!toggle(card, 'bookmark', false) && shareControl(card)) ? 'bookmark' : null;
+    }
+    if (job.section === 4) return toggle(card, 'like') ? 'like' : null;
     if (job.section === 2) {
-      return repostedHere(card) && owned(card, '[data-testid="unretweet"]') ? 'repost' : null;
+      return repostedHere(card) && toggle(card, 'repost') ? 'repost' : null;
     }
     if (data.author !== job.handle || repostLabels.has(socialContext(card))) return null;
     if (job.section === 1 && (job.replySearch ? atSection() : markedReply(card))) return 'delete';
     if (job.section === 0 && !markedReply(card)) return 'delete';
     return null;
+  }
+
+  function shareControl(card) {
+    const exact = owned(card, '[data-testid="share"]');
+    if (exact) return exact;
+    const matches = all(card, 'button[aria-label], [role="button"][aria-label]')
+      .filter(node => cardMarkup(card, node) &&
+        ['share', 'share post', 'مشاركة', 'مشاركة المنشور'].includes(normalize(node.getAttribute('aria-label'))));
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function toggle(card, kind, active = true) {
+    const tests = active ? { repost: 'unretweet', bookmark: 'removeBookmark', like: 'unlike' }
+      : { repost: 'retweet', bookmark: 'bookmark', like: 'like' };
+    const exact = owned(card, `[data-testid="${tests[kind]}"]`);
+    if (exact) return exact;
+    const labels = active ? toggleLabels[kind] : addLabels[kind];
+    const matches = all(card, 'button[aria-label], [role="button"][aria-label]')
+      .filter(node => cardMarkup(card, node))
+      .filter(node => {
+        const text = normalize(node.getAttribute('aria-label')).replace(/^\d[\d,.\s]*\s*/, '');
+        const pressed = node.getAttribute('aria-pressed');
+        if (active && pressed === 'false') return false;
+        if (!active && pressed === 'true') return false;
+        if (labels.some(label => text === label || text.endsWith('. ' + label) || text.endsWith(', ' + label))) return true;
+        return active && pressed === 'true' && addLabels[kind].includes(text);
+      });
+    return matches.length === 1 ? matches[0] : null;
   }
 
   function enabled(node) {
@@ -257,7 +306,7 @@
   }
 
   function refreshDue() {
-    return Boolean(job.refreshAt && Date.now() >= job.refreshAt);
+    return Cleaner.refreshDue(job);
   }
 
   async function waitUntil(time) {
@@ -307,10 +356,10 @@
     const root = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = `
-      :host {position:fixed; inset:auto auto 22px 22px; z-index:2147483647; color-scheme:dark}
-      aside {box-sizing:border-box; width:min(335px,calc(100vw - 44px)); background:#000; color:#fff; border:1px solid #777; border-radius:12px; padding:15px 16px; box-shadow:0 10px 30px #0008; font:13px/1.4 system-ui,sans-serif}
+      :host {position:fixed; inset:auto auto 14px 14px; z-index:2147483647; color-scheme:dark}
+      aside {box-sizing:border-box; width:min(290px,calc(100vw - 28px)); background:#000; color:#fff; border:1px solid #777; border-radius:7px; padding:10px 12px; box-shadow:0 6px 18px #0008; font:11px/1.4 system-ui,sans-serif}
       header {display:flex; justify-content:space-between; align-items:center; gap:10px}
-      strong {font-size:16px} p {margin:8px 0; overflow-wrap:anywhere} small {color:#c1c1c1}
+      strong {font-size:13px} p {margin:5px 0; overflow-wrap:anywhere} small {color:#c1c1c1}
       button {font:600 12px system-ui,sans-serif; background:#fff; color:#000; padding:7px 12px; border:0; border-radius:5px; cursor:pointer}
       button:disabled {opacity:.55; cursor:default}
       button:focus-visible {outline:2px solid #fff; outline-offset:3px}
@@ -363,7 +412,7 @@
       control.textContent = state.alertPending ? 'OK' : state.status === 'running' ? 'Stop' : 'Dismiss';
       control.disabled = state.status === 'stopping';
       route.textContent = ['running', 'stopping', 'paused'].includes(state.status)
-        ? `${Cleaner.sections[state.section].name} · ${Cleaner.routeStatus(state)}` : '';
+        ? `${Cleaner.sections[state.section].name} · ${state.selected.indexOf(state.section) + 1}/${state.selected.length}` : '';
       route.hidden = !route.textContent;
       description.textContent = state.alertPending
         ? state.message.split(' Check the last attempted item: ')[0] + ' Select OK to acknowledge. The run stays stopped.'
@@ -376,7 +425,8 @@
       }
       const { deleted, reposts, bookmarks, likes, skipped, errors } = state.totals;
       const bookmarkCount = state.bookmarksCleared ? 'All' : bookmarks;
-      counts.textContent = `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes · ${skipped} cards ignored · ${errors} action errors`;
+      counts.textContent = `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes` +
+        (errors ? ` · ${errors} errors` : '');
     };
   }
 
@@ -385,6 +435,7 @@
   }
 
   function validCard(item) {
+    if (!visible(item.card)) return false;
     const latest = parseCard(item.card);
     return latest?.id === item.id && latest.author === item.author &&
       identify(item.card, latest) === item.kind;
@@ -393,12 +444,20 @@
   async function apply(item) {
     lastIssue = '';
     item.card.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    await sleep(650);
-    if (cancelled || !routeAndAccount() || !validCard(item)) return 'deferred';
+    await sleep(120);
+    const rebind = () => {
+      if (validCard(item)) return true;
+      const candidates = all(primary(), ARTICLE).map(parseCard).filter(data =>
+        data?.id === item.id && data.author === item.author);
+      if (candidates.length !== 1 || identify(candidates[0].card, candidates[0]) !== item.kind) return false;
+      item.card = candidates[0].card;
+      return true;
+    };
+    if (cancelled || !routeAndAccount() || !rebind()) return 'deferred';
 
     let permission = await ask('begin', { item: { kind: item.kind, url: item.url } });
     while (permission?.wait) {
-      if (!await waitUntil(Date.now() + permission.wait) || !validCard(item)) return 'deferred';
+      if (!await waitUntil(Date.now() + permission.wait) || !rebind()) return 'deferred';
       permission = await ask('begin', { item: { kind: item.kind, url: item.url } });
     }
     if (permission?.retry) return 'retry';
@@ -408,6 +467,7 @@
     }
     if (!permission?.allowed) return 'deferred';
     let clicked = false;
+    let directRepost = false;
     let deleteBaseline;
     let confirmation;
     let openedMenu = false;
@@ -429,8 +489,8 @@
         openedMenu = true;
         const remove = await waitFor(() => menuItem('[role="menuitem"], [data-testid="delete"]', deleteLabels), 7500);
         if (!enabled(remove)) return fail('The post menu did not offer a recognizable Delete command.');
-        await sleep(750);
-        if (cancelled || !enabled(remove) || !routeAndAccount() || !validCard(item)) {
+        await sleep(150);
+        if (cancelled || !enabled(remove) || !routeAndAccount() || !rebind()) {
           return fail('The post changed while its menu was open.');
         }
         deleteBaseline = new Set(all(document, CONFIRM));
@@ -442,20 +502,40 @@
         if (all(document, DROPDOWN).length || all(document, '[role="dialog"], [aria-modal="true"]').length) {
           return fail('An X menu or dialog was already open.');
         }
-        const toggle = owned(item.card, '[data-testid="unretweet"]');
-        if (!enabled(toggle)) return fail('The repost control was missing or disabled.');
-        toggle.click();
+        const repostButton = toggle(item.card, 'repost');
+        if (!enabled(repostButton)) return fail('The repost control was missing or disabled.');
+        repostButton.click();
         openedMenu = true;
-        button = await waitFor(() => {
+        const action = await waitFor(() => {
           const choice = unique(document, '[data-testid="unretweetConfirm"]');
-          return enabled(choice) && labelled(choice, undoLabels) ? choice :
-            menuItem('[role="menuitem"]', undoLabels);
+          const confirm = enabled(choice) && labelled(choice, undoLabels) ? choice
+            : menuItem('[role="menuitem"]', undoLabels);
+          if (confirm) return { button: confirm };
+          const live = all(primary(), ARTICLE).map(parseCard)
+            .filter(data => data?.id === item.id && data.author === item.author);
+          if (live.length === 1 && toggle(live[0].card, 'repost', false) && !toggle(live[0].card, 'repost')) {
+            return { direct: true };
+          }
+          return null;
         }, 7500);
-        if (!button) return fail('The Undo repost confirmation did not appear.');
+        if (!action) return fail('The Undo repost confirmation did not appear.');
+        directRepost = Boolean(action.direct);
+        clicked = directRepost;
+        button = action.button;
       } else {
-        button = owned(item.card, item.kind === 'like' ? '[data-testid="unlike"]' : '[data-testid="removeBookmark"]');
+        button = toggle(item.card, item.kind);
+        if (!button && item.kind === 'bookmark') {
+          if (all(document, DROPDOWN).length || all(document, SHEET).length) return fail('An X menu or dialog was already open.');
+          const share = shareControl(item.card);
+          if (!enabled(share)) return fail('The bookmark control was missing.');
+          share.click();
+          openedMenu = true;
+          button = await waitFor(() => menuItem('[role="menuitem"], [data-testid="removeBookmark"]',
+            new Set(toggleLabels.bookmark)), 3500);
+          if (!button) return fail('X did not offer a Remove bookmark action in this post’s menu.');
+        }
       }
-      await sleep(850);
+      await sleep(150);
       const approval = await ask('check', { url: item.url });
       if (cancelled || !approval?.allowed) return fail('The cleanup tab changed or stopped before confirmation.');
       if (!routeAndAccount()) return fail('X changed the active section or account before confirmation.');
@@ -466,27 +546,34 @@
           return fail('The Delete confirmation was missing, disabled or unrecognized.');
         }
         button = confirmation.button;
-      } else if (!enabled(button) || !validCard(item)) {
-        return fail('The item or its control changed before confirmation.');
+      } else if (!directRepost) {
+        if (!rebind()) return fail('The item changed before confirmation.');
+        if (item.kind !== 'repost' && !openedMenu) button = toggle(item.card, item.kind);
+        if (!enabled(button)) return fail('The action control changed before confirmation.');
       }
       const oldNotices = new Map(all(document, NOTICES).map(node =>
         [node, normalize(node.innerText || node.textContent)]));
       const renderedCards = () => all(primary(), ARTICLE);
       const targetStillRendered = () => renderedCards().some(card => parseCard(card)?.id === item.id);
       const presentBeforeClick = item.kind !== 'delete' || targetStillRendered();
-      button.click();
-      clicked = true;
+      if (!directRepost) {
+        button.click();
+        clicked = true;
+      }
       if (item.kind === 'delete') {
         ask('progress', { text: 'Delete sent · Waiting for X to confirm…' }).catch(console.warn);
       }
 
-      const expected = { repost: 'retweet', bookmark: 'bookmark', like: 'like' }[item.kind];
       const changed = () => {
-        if (expected && owned(item.card, `[data-testid="${expected}"]`) && parseCard(item.card)?.id === item.id) return true;
-        if (item.card.isConnected && parseCard(item.card)?.id === item.id) return false;
         const timeline = primary();
         if (!timeline) return false;
         const cards = all(timeline, ARTICLE);
+        const live = cards.map(parseCard).filter(data => data?.id === item.id && data.author === item.author);
+        if (item.kind !== 'delete' && live.length) {
+          return live.every(data => Boolean(toggle(data.card, item.kind, false)) && !toggle(data.card, item.kind));
+        }
+        if (live.length) return false;
+        if (item.card.isConnected && parseCard(item.card)?.id === item.id) return false;
         if (!cards.length && !emptyTimeline()) return false;
         if (item.kind === 'delete') return presentBeforeClick && !targetStillRendered();
         return !cards.some(card => parseCard(card)?.id === item.id && identify(card) === item.kind);
@@ -494,6 +581,10 @@
       let changedAt = null;
       const verified = await waitFor(() => {
         if (restriction() || timelineError()) return 'issue';
+        if (item.kind === 'bookmark' && all(document, NOTICES).some(node => {
+          const text = normalize(node.innerText || node.textContent);
+          return oldNotices.get(node) !== text && bookmarkNotices.has(text.replace(/[.!。]$/, ''));
+        })) return 'verified';
         if (deleteBaseline) {
           const open = confirmationSheet(deleteBaseline);
           if (newDeletionNotice(oldNotices)) {
@@ -511,7 +602,7 @@
           return null;
         }
         changedAt ??= Date.now();
-        return Date.now() - changedAt >= 1250 ? 'verified' : null;
+        return Date.now() - changedAt >= (item.kind === 'delete' ? 1250 : 650) ? 'verified' : null;
       }, 22000, true);
       ok = verified === 'verified' && routeAndAccount();
       return ok ? 'changed' : fail(verified === 'issue'
@@ -531,6 +622,7 @@
       });
       batchDue = Boolean(state?.refreshPending);
       nextActionAt = state?.nextActionAt || 0;
+      if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode, actionsSinceRefresh: state.actionsSinceRefresh });
     }
   }
 
@@ -595,6 +687,7 @@
         });
         batchDue = Boolean(state?.refreshPending);
         nextActionAt = state?.nextActionAt || 0;
+        if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode, actionsSinceRefresh: state.actionsSinceRefresh });
       }
     }
   }

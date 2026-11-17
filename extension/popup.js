@@ -4,6 +4,7 @@ const get = id => document.getElementById(id);
 const options = [...document.querySelectorAll('#options input[type="checkbox"]')];
 const categories = { posts: 0, replies: 1, reposts: 2, bookmarks: 3, likes: 4 };
 const paceInput = get('pace');
+const paceMode = get('pace-mode');
 const countKeys = ['deleted', 'reposts', 'bookmarks', 'likes', 'skipped', 'errors'];
 const statuses = { running: 'Running', stopping: 'Stopping', paused: 'Paused', review: 'Needs review', finished: 'Complete' };
 let current;
@@ -25,6 +26,7 @@ function selection() {
 }
 
 function enteredPace() {
+  if (paceMode.value === 'auto') return 10000;
   const milliseconds = Math.round(paceInput.valueAsNumber * 1000);
   return paceInput.validity.valid && Cleaner.validPace(milliseconds) ? milliseconds : null;
 }
@@ -41,7 +43,7 @@ function renderCountdown() {
   const timer = get('countdown');
   timer.hidden = seconds <= 0 || (current?.status === 'paused' && detection?.handle && current.handle !== detection.handle);
   if (seconds > 0) {
-    timer.textContent = `Wait remaining: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    timer.textContent = `${current?.paceMode === 'auto' ? 'Automatic · ' : ''}Next action in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
   const pausedForX = current?.status === 'paused' && current?.pausedAt && ['x', 'rate-limit'].includes(current.pauseKind) &&
     (!detection?.handle || current.handle === detection.handle);
@@ -66,6 +68,7 @@ function render() {
   get('status').textContent = statuses[report?.status] || 'Ready';
   get('options').disabled = active || busy;
   const invalidPace = enteredPace() === null;
+  get('manual-pace').hidden = paceMode.value === 'auto';
   paceInput.setAttribute('aria-invalid', String(invalidPace));
   get('pace-error').hidden = !invalidPace;
   renderCountdown();
@@ -95,6 +98,7 @@ function render() {
   if (!lastItem.hidden) lastItem.href = lastUrl;
   for (const key of countKeys) get(key).textContent = (report?.totals?.[key] || 0).toLocaleString();
   if (report?.bookmarksCleared) get('bookmarks').textContent = 'All';
+  get('detail-counts').textContent = report?.totals?.errors ? report.totals.errors.toLocaleString() + ' errors' : '';
   renderRoute(same ? report : null, selected);
   renderEvents(report?.events || []);
 }
@@ -156,8 +160,13 @@ function syncOptions() {
     for (const box of options) box.checked = state.selected.includes(categories[box.value]);
   }
   if (Cleaner.validPace(state.pace) && !paceChanged) paceInput.value = String(state.pace / 1000);
+  if (!paceChanged) paceMode.value = state.paceMode || 'auto';
 }
 
+paceMode.addEventListener('change', () => {
+  paceChanged = true;
+  render();
+});
 paceInput.addEventListener('input', () => {
   paceChanged = true;
   render();
@@ -175,7 +184,7 @@ async function action(type) {
   busy = true;
   render();
   try {
-    const fields = type === 'start' ? { selection: selection(), pace, expectedHandle: detection?.handle }
+    const fields = type === 'start' ? { selection: selection(), pace, paceMode: paceMode.value, expectedHandle: detection?.handle }
       : type === 'acknowledge' ? { id: current?.id } : {};
     setState(await request(type, fields));
     busy = false;

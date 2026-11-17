@@ -190,6 +190,88 @@ function harness() {
   header.find.get(headerLinks).push(new Element('', 'https://x.com/other/status/43'));
   assert.equal(h.api.parseCard(alternate.article), null);
 
+  const controls = 'button[aria-label], [role="button"][aria-label]';
+  for (const [section, kind, active, inactive] of [
+    [2, 'repost', '4 reposts. Undo repost', '4 reposts. Repost'],
+    [3, 'bookmark', 'Remove from bookmarks', 'Bookmark'],
+    [4, 'like', '32 likes. Unlike', '32 likes. Like']
+  ]) {
+    const accessible = harness();
+    accessible.job(section);
+    const target = accessible.card('other', 400 + section, 'unused');
+    target.article.find.delete('[data-testid="unused"]');
+    target.article.find.set(controls, [target.button]);
+    target.button.attributes.set('aria-label', active);
+    target.button.attributes.set('aria-pressed', 'true');
+    const settle = () => {
+      target.button.attributes.set('aria-label', inactive);
+      target.button.attributes.set('aria-pressed', 'false');
+    };
+    target.button.onclick = kind === 'repost' ? () => {
+      const choice = new Element('Undo repost');
+      accessible.document.find.set('[data-testid="unretweetConfirm"]', [choice]);
+      choice.onclick = settle;
+    } : settle;
+    assert.equal(accessible.api.identify(target.article), kind);
+    assert.equal(await accessible.api.apply({ ...accessible.api.parseCard(target.article), kind }), 'changed');
+    assert.equal(accessible.api.identify(target.article), null);
+  }
+  const remounted = harness();
+  remounted.job(4, [4]);
+  const old = remounted.card('other', 500, 'unlike');
+  let originalClicks = 0;
+  let currentClicks = 0;
+  old.button.onclick = () => { originalClicks++; };
+  old.article.scrollIntoView = () => {
+    old.article.isConnected = false;
+    const current = remounted.card('other', 500, 'unlike');
+    current.button.onclick = () => {
+      currentClicks++;
+      current.article.find.delete('[data-testid="unlike"]');
+      const inactive = new Element('Like');
+      inactive.ancestors.set(ARTICLE, current.article);
+      current.article.find.set('[data-testid="like"]', [inactive]);
+    };
+  };
+  assert.equal(await remounted.api.apply({ ...remounted.api.parseCard(old.article), kind: 'like' }), 'changed');
+  assert.equal(originalClicks, 0);
+  assert.equal(currentClicks, 1);
+  console.log('PASS accessible toggle controls and remounted cards use the current action and verify its inactive state');
+
+  const direct = harness();
+  direct.job(2, [2]);
+  const oneClick = direct.card('other', 550, 'unretweet');
+  let toggles = 0;
+  oneClick.button.onclick = () => {
+    toggles++;
+    oneClick.article.find.delete('[data-testid="unretweet"]');
+    const repost = new Element('Repost');
+    repost.ancestors.set(ARTICLE, oneClick.article);
+    repost.onclick = () => { toggles++; };
+    oneClick.article.find.set('[data-testid="retweet"]', [repost]);
+  };
+  assert.equal(await direct.api.apply({ ...direct.api.parseCard(oneClick.article), kind: 'repost' }), 'changed');
+  assert.equal(toggles, 1);
+  console.log('PASS direct Undo repost verifies the state change without reposting the item again');
+
+  const shared = harness();
+  shared.job(3, [3]);
+  const saved = shared.card('other', 600, 'share');
+  saved.button.onclick = () => {
+    const menu = new Element();
+    const remove = new Element('Remove from bookmarks');
+    menu.find.set('[role="menuitem"], [data-testid="removeBookmark"]', [remove]);
+    shared.document.find.set(DROPDOWN, [menu]);
+    remove.onclick = () => {
+      shared.document.find.set(DROPDOWN, []);
+      shared.document.find.set(RESULT_NOTICES, [new Element('Removed from your Bookmarks')]);
+    };
+  };
+  assert.equal(shared.api.identify(saved.article), 'bookmark');
+  assert.equal(await shared.api.apply({ ...shared.api.parseCard(saved.article), kind: 'bookmark' }), 'changed');
+  assert.equal(shared.calls.at(-1).ok, true);
+  console.log('PASS bookmark removal through the Share menu requires an explicit removal command and fresh confirmation');
+
   const b = harness();
   b.job(4, [4]);
   b.card('Other', 55, 'removeBookmark');

@@ -11,13 +11,12 @@
 <body>
   <main>
     <header>
-      <img src="icons/48.png" width="48" height="48" alt="">
-      <div><h1>X Cleaner</h1><p class="account" id="account">Detecting account…</p></div>
-      <span id="status" class="status">Ready</span>
+      <img src="icons/48.png" width="36" height="36" alt="">
+      <div><h1>X Cleaner</h1><p id="account">Detecting account…</p></div>
+      <span id="status">Ready</span>
     </header>
-
     <fieldset id="options">
-      <legend>What to clean</legend>
+      <legend>Clean</legend>
       <div class="options">
         <label><input type="checkbox" value="posts" checked>Posts</label>
         <label><input type="checkbox" value="reposts" checked>Reposts</label>
@@ -25,53 +24,41 @@
         <label><input type="checkbox" value="bookmarks" checked>Bookmarks</label>
         <label><input type="checkbox" value="likes" checked>Likes</label>
       </div>
-      <label class="pace" for="pace">
-        <span>Delay between actions</span>
-        <span class="pace-value"><input id="pace" type="number" inputmode="decimal" min="0" max="3600" step="0.001" value="15" required aria-label="Delay between actions in seconds" aria-describedby="pace-error"> <span aria-hidden="true">sec</span></span>
-      </label>
-      <p id="pace-error" class="field-error" hidden>Enter 0–3600 seconds, with up to 3 decimal places.</p>
-    </fieldset>
-
-    <button type="button" id="start" disabled>Clean everything</button>
-    <p class="warning" id="warning">Permanently removes the selected activity.</p>
-
-    <section id="achievement" hidden aria-label="Cleanup achievement">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M8 3h8v6a4 4 0 0 1-8 0V3ZM8 5H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v5m-4 3h8m-7 0 1-3h4l1 3"/>
-      </svg>
-      <div><strong>Cleanup complete</strong><p>All selected sections rechecked.</p></div>
-    </section>
-
-    <section class="route" aria-labelledby="route-title">
-      <div class="route-heading"><h2 id="route-title">Cleanup route</h2><span id="route-pass"></span></div>
-      <ol id="route-list"></ol>
-    </section>
-
-    <section class="activity" aria-label="Cleanup progress">
-      <div id="interruption" class="interruption" hidden>
-        <strong id="interrupt-title"></strong>
-        <p id="interrupt-reason" role="alert"></p>
-        <p>The run stays stopped after you select OK.</p>
-        <button type="button" id="acknowledge">OK</button>
+      <div class="speed">
+        <label for="pace-mode">Speed</label>
+        <select id="pace-mode"><option value="auto" selected>Automatic</option><option value="manual">Custom delay</option></select>
+        <span id="manual-pace" hidden><input id="pace" type="number" inputmode="decimal" min="0" max="3600" step="0.001" value="15" required aria-label="Delay between actions in seconds" aria-describedby="pace-error"> sec</span>
       </div>
-      <p id="message" role="status">Ready to scan your X account.</p>
-      <p id="elapsed" hidden></p>
-      <p id="countdown" hidden></p>
+      <p id="pace-error" hidden>Enter 0–3600 seconds.</p>
+    </fieldset>
+    <button type="button" id="start" disabled>Clean everything</button>
+    <p id="warning">Permanently removes the selected activity.</p>
+    <div id="achievement" hidden><strong>Cleanup complete</strong><p>Selected sections rechecked.</p></div>
+    <div id="interruption" hidden>
+      <strong id="interrupt-title"></strong>
+      <p id="interrupt-reason" role="alert"></p>
+      <p>Press OK, then resume when X is ready.</p>
+      <button type="button" id="acknowledge">OK</button>
+    </div>
+    <p id="message" role="status">Ready to clean your X account.</p>
+    <p id="elapsed" hidden></p>
+    <p id="countdown" hidden></p>
+    <dl class="stats">
+      <div><dd id="deleted">0</dd><dt>Deleted</dt></div>
+      <div><dd id="reposts">0</dd><dt>Reposts</dt></div>
+      <div><dd id="bookmarks">0</dd><dt>Bookmarks</dt></div>
+      <div><dd id="likes">0</dd><dt>Likes</dt></div>
+    </dl>
+    <details id="details">
+      <summary>Details <span id="detail-counts"></span></summary>
+      <div class="secondary-stats"><span><b id="skipped">0</b> ignored</span><span><b id="errors">0</b> errors</span></div>
       <p id="problem" hidden></p>
       <a id="last-item" hidden target="_blank" rel="noreferrer">Open last attempted item</a>
-      <dl class="stats">
-        <div><dt>Deleted</dt><dd id="deleted">0</dd></div>
-        <div><dt>Reposts undone</dt><dd id="reposts">0</dd></div>
-        <div><dt>Bookmarks removed</dt><dd id="bookmarks">0</dd></div>
-        <div><dt>Likes removed</dt><dd id="likes">0</dd></div>
-        <div><dt>Cards ignored</dt><dd id="skipped">0</dd></div>
-        <div><dt>Action errors</dt><dd id="errors">0</dd></div>
-      </dl>
-    </section>
-    <details id="events" hidden>
-      <summary>Recent activity</summary>
-      <ul id="event-list"></ul>
+      <div class="route-heading"><strong>Route</strong><span id="route-pass"></span></div>
+      <ol id="route-list"></ol>
+      <div id="events" hidden><ul id="event-list"></ul></div>
     </details>
+    <footer><a href="https://linktr.ee/VC351" target="_blank" rel="noopener noreferrer">Linktree ↗</a></footer>
   </main>
 </body>
 </html>

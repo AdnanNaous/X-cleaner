@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.6.2.zip.
+1. Extract X-Cleaner-1.7.0.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.6.2 folder.
+4. Select the entire extracted X-Cleaner-1.7.0 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
@@ -32,15 +32,17 @@ selected sections finish their verification scan without unresolved items.
 COVERAGE AND ACCOUNT
 Deletion is permanent. The extension can only process items X exposes in
 the selected timelines. Older or unavailable items may not be discoverable
-in those timelines. The delay defaults to 15 seconds. Enter 0 to 3600 seconds,
-including decimals like 0.5. At 0, verification still runs after each action.
+in those timelines. Automatic is the default speed. It starts at 10 seconds,
+then uses 4 or 3 seconds after quick confirmations. An error or slow response
+raises the wait to 15 seconds. Custom delay accepts 0 to 3600 seconds.
+Every action is verified before the next one.
 After six actions in a section, X Cleaner waits at least 45 seconds and
 continues in the same page. It refreshes when checking the end of a timeline
 or recovering from a loading error. Items that fail twice are listed for review
 while the rest of the route continues. If X exposes its built-in Clear all
 Bookmarks command, X Cleaner checks for the empty list before reporting All.
 Eligible items that could not be processed are rechecked after a short
-break. The current page refreshes after 10 minutes once the current action
+break. The current page refreshes after 10 minutes or 40 actions once the current action
 settles. The run keeps its route, totals, and cooldown. If X shows a rate
 limit or account restriction, the run stops and displays elapsed pause time.
 Select OK to acknowledge the persistent alert. Resume manually when X is ready.
@@ -49,3 +51,9 @@ guarantee against enforcement. See https://help.x.com/en/rules-and-policies/x-au
 
 The extension uses your existing X session. It does not request passwords,
 tokens, or cookies. Status and totals are stored locally in Chrome.
+
+TAB HEALTH
+The running cleanup tab is protected from Chrome automatic memory discard.
+A scheduled health check can reactivate a frozen tab or reload an unresponsive
+page. Stop and completion restore its original discard setting. Keep Chrome
+open. Device sleep and browser shutdown can interrupt cleanup.
