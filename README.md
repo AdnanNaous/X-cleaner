@@ -4,85 +4,36 @@
 
 # X Cleaner
 
-Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
+Remove your X posts, reposts, replies, bookmarks, and likes with one button.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.1.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.2.zip?raw=true)
 
-**Version 1.7.1 · ZIP · Manual installation on desktop Chromium browsers**
+**1.7.2 · Desktop Chromium extension**
 
-## Install and run
+1. Download the ZIP and **Extract All**.
+2. Open **Extensions** (Chrome uses `chrome://extensions`) and turn on **Developer mode**.
+3. Click **Load unpacked** and select the entire extracted **X-Cleaner-1.7.2** folder.
+4. Sign in at [x.com](https://x.com), open **X Cleaner**, check your account, and click **Clean everything**.
 
-The images below use real Windows and Chrome screenshots with arrows and X Cleaner labels added. The screenshots show an earlier ZIP filename. Select the extracted folder for the version you downloaded. The layout may vary by browser and operating system.
+The order is **Posts → Reposts → Replies → Bookmarks → Likes**. Uncheck anything you want to keep. **Automatic** adjusts the wait as X responds. Keep the cleanup tab open. The same button stops or resumes cleanup.
 
-### 1. Extract the ZIP
+Loading failures trigger retries and alternate routes. Persistent failures remain under **Details** while other sections continue. **Retry cleanup** checks them again. Explicit X restrictions pause the run and require acknowledgement.
 
-On Windows, right-click `X-Cleaner-1.7.1.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+**Update** by extracting the new ZIP over your existing extension folder, clicking **Reload** on its extension card, then refreshing your X tab.
 
-![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
+**Browsers** · Chrome/Chromium 120+, Edge, Brave, Vivaldi, and Opera desktop. Browser builds have not been tested individually. Firefox, Safari, and mobile need separate builds.
 
-### 2. Turn on Developer mode
+Progress stays in your browser. Deletion is permanent, and cleanup covers items X exposes. Website automation can cause account restrictions. No delay guarantees against enforcement. [X automation rules](https://help.x.com/en/rules-and-policies/x-automation)
 
-Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **Developer mode** (1), then click **Load unpacked** (2). For other browsers, use the address in the compatibility table below.
+<details>
+<summary>Installation pictures</summary>
 
-![Chrome’s Extensions page with arrows pointing to Developer mode and Load unpacked](./docs/images/02-developer-mode.png)
+Screenshots use real Windows and Chrome interfaces with added arrows and labels. Folder names show an earlier version.
 
-### 3. Select the extracted folder
+![Extract All](./docs/images/01-extract.png)
+![Developer mode and Load unpacked](./docs/images/02-developer-mode.png)
+![Select the entire extracted folder](./docs/images/03-select-folder.png)
+![Open X Cleaner](./docs/images/04-use.png)
 
-Select the entire extracted **X-Cleaner-1.7.1** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
-
-![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
-
-### 4. Open X Cleaner on X
-
-1. Sign in at [x.com](https://x.com). On that tab, click the **Extensions** icon (1) and choose **X Cleaner** (2). You can pin it for faster access.
-2. Check your displayed handle and choose one or more categories. The route follows **Posts → Reposts → Replies → Bookmarks → Likes**, skipping unchecked categories.
-3. Choose **Clean selected** or **Clean everything** to remove the selected activity. Deletions are permanent. Keep the cleanup tab open and use **Stop cleanup** if you need to stop the run.
-
-![Chrome Extensions menu showing where to open X Cleaner](./docs/images/04-use.png)
-
-Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-unzip-file-windows/), [Chrome for Developers](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), and [ViewGrip](https://www.viewgrip.net/help/how-to-install-viewgrip-extension-on-chrome).
-
-Replies can also use X Search filtered to the signed-in account when the profile timeline does not identify reply cards. If the Reposts list stops loading after removals, the cleaner retries it, then checks active repost controls on your own profile. Ordinary posts in that fallback are ignored. A section that remains unreadable is marked for review while the remaining selected sections continue. Explicit X restrictions and sign-in checks pause the whole run.
-
-**Speed** defaults to **Automatic**. It starts with 10-second waits, moves to 4 then 3 seconds after repeated quick confirmations, and slows to 15 seconds after an error or slow response. For a fixed wait, choose **Custom delay** and enter 0–3600 seconds. Every action is verified before the next one. A 45-second break follows six actions. The popup keeps the counters visible and places the route and activity log under **Details**.
-
-To update an unpacked installation, extract the new ZIP over your existing extension folder and click **Reload** on the X Cleaner card in your browser’s extensions page.
-
-The cleanup tab fully refreshes after 10 minutes or 40 actions on the same page, once the current action is settled. The run keeps its place, totals, and cooldown. Cards ignored are outside the selected cleanup or shown for context. Eligible items that could not be processed are rechecked after a short break. Persistent failures appear under **Needs review**.
-
-When X shows a rate limit or account restriction, cleanup stops and displays the reason and elapsed pause time. The alert stays visible until you select **OK**. Resume manually once X is ready. The 5-minute wait after a rate limit is the extension’s minimum.
-
-While cleanup runs, X Cleaner protects its tab from Chrome’s automatic memory discard. A health check reactivates a frozen tab or reloads an unresponsive page, with bounded retries and saved counts. Stop or completion restores the tab’s previous discard setting. Keep Chrome open. Device sleep, browser shutdown, and operating-system memory limits can still interrupt a run.
-
-## Browser compatibility
-
-| Browser | Where to install |
-| --- | --- |
-| Chrome and Chromium | `chrome://extensions` · Developer mode → Load unpacked. The manifest requires Chrome 120 or later. |
-| Microsoft Edge | `edge://extensions` · Developer mode → Load unpacked. |
-| Brave | `brave://extensions` · Developer mode → Load unpacked. |
-| Vivaldi | Vivaldi menu → Tools → Extensions · Developer mode → Load unpacked. |
-| Opera and Opera GX | `opera:extensions` · Developer mode → Load unpacked. |
-| Firefox, Safari, and mobile browsers | This ZIP targets desktop Chromium. These browsers are outside the scope of this release. |
-
-The ZIP targets desktop Chromium. Compatibility with each listed Chromium browser and version has yet to be tested individually. Firefox uses a different background-script setup for Manifest V3. Safari requires its own packaging. See [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), [Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading), [Brave](https://support.brave.app/hc/en-us/articles/360017909112-How-can-I-add-extensions-to-Brave), [Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/), [Opera](https://help.opera.com/en/extensions/testing/), [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background), and [Safari](https://developer.apple.com/safari/extensions/).
-
-## Troubleshooting
-
-- **Manifest missing or unreadable** — Open the folder in your file manager and confirm `manifest.json` is at its top level, then select that folder.
-- **Account not detected** — Sign in on `x.com`, reload the tab, and reopen X Cleaner from that tab.
-- **Cleanup paused** — Read the reason in the popup. A sign-in prompt, account change, or rate limit can pause the run.
-
-## Privacy and limits
-
-The extension uses the storage permission for progress and the alarms permission for its cleanup health check. It reads the signed-in handle from the page and stores the run and its results locally in the browser. It does not collect credentials, cookies, or analytics, or send reports to a third-party service. The cleaner only works with items X makes available in its interface. X prohibits non-API automation and can restrict accounts under its [automation rules](https://help.x.com/en/rules-and-policies/x-automation).
-
-## Tests
-
-From the repository root, run these tests with Node.js. They simulate X pages and extension APIs.
-
-```sh
-node tests/test-worker.cjs
-node tests/test-content.cjs
-node tests/test-popup.cjs
-```
+Adapted from [Digital Citizen](https://www.digitalcitizen.life/how-unzip-file-windows/), [Chrome for Developers](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), and [ViewGrip](https://www.viewgrip.net/help/how-to-install-viewgrip-extension-on-chrome).
+</details>

@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.7.1.zip.
+1. Extract X-Cleaner-1.7.2.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.7.1 folder.
+4. Select the entire extracted X-Cleaner-1.7.2 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
@@ -64,3 +64,6 @@ Ordinary timeline-loading failures receive paced retries and an alternate
 route where available. A section that remains unreadable is listed for review
 while other selected sections continue. Explicit rate-limit and account
 restriction notices keep the run paused until acknowledged and resumed.
+
+Repeated unreadable routes remain listed for review during the current run.
+Retry cleanup starts a fresh attempt after you acknowledge the report.

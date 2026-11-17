@@ -171,6 +171,11 @@ async function checkHealth() {
 }
 
 async function openSection(job, { repostProfile = false } = {}) {
+  const unavailable = job.unavailable?.[job.section];
+  if (unavailable) {
+    await finishSection(job, { result: 'review', detail: unavailable });
+    return;
+  }
   job.history = false;
   job.replySearch = false;
   job.repostProfile = repostProfile;
@@ -246,7 +251,9 @@ async function unavailableSection(job, reason) {
     await openReplySearch(job);
     return;
   }
-  await finishSection(job, { result: 'review', detail: reason + ' Other selected sections will continue.' });
+  const detail = reason + ' Other selected sections will continue. Retry cleanup to check this section again.';
+  (job.unavailable ||= {})[job.section] = detail;
+  await finishSection(job, { result: 'review', detail });
 }
 
 async function recoverRoute(job, url) {
@@ -306,6 +313,7 @@ async function start(old, selection, pace, accountHandle, paceMode) {
   const job = {
     id: crypto.randomUUID(), tabId: tab.id, status: 'running', selected, handle: accountHandle,
     itemFailures: keep && old.status === 'paused' ? old.itemFailures || {} : {},
+    unavailable: resume ? old.unavailable || {} : {},
     confirmed: keep && old.status === 'review'
       ? Object.fromEntries(Object.keys(old.confirmed || {}).map(key => [key, 1]))
       : keep ? old.confirmed || {} : {},

@@ -293,10 +293,10 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(status.replySearch, true);
   assert.match(route.navigations.at(-1), /filter%3Areplies/);
   for (let attempt = 0; attempt < 3; attempt++) status = await route.change(status, { url: home });
-  assert.equal(status.status, 'running');
+  assert.equal(status.status, 'review');
   assert.equal(status.section, 1);
   assert.equal(status.pass, 2);
-  await route.popup('stop');
+  await route.popup('acknowledge', { id: status.id });
   job = await route.popup('start', { selection: [3, 4] });
   assert.equal(job.section, 3);
   for (let retry = 0; retry < 3; retry++) status = await route.change(job, { url: home });
@@ -541,6 +541,31 @@ const end = async (h, job, result = 'clear') => {
   assert.equal((await unreadable.popup('start', { selection: [2, 3, 4] })).status, 'paused');
   assert.equal(job.totals.reposts, 30);
   console.log('PASS unreadable Reposts after 29 removals falls back to the profile, retains counts and keeps genuine limits paused');
+
+  const bounded = harness();
+  job = await bounded.popup('start', { selection: [2, 3] });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await bounded.tab(job, 'hello');
+    job = await bounded.tab(job, 'sectionIssue', { reason: 'X did not load this route.' });
+    bounded.tick(60000);
+  }
+  assert.equal(job.section, 3);
+  assert.equal(job.status, 'running');
+  assert.ok(job.unavailable[2]);
+  const beforeVerify = bounded.navigations.length;
+  job = await end(bounded, job);
+  assert.equal(job.pass, 2);
+  assert.equal(job.section, 3);
+  assert.deepEqual(bounded.navigations.slice(beforeVerify), ['https://x.com/i/bookmarks']);
+  assert.equal(job.results.find(result => result.section === 2).status, 'review');
+  job = await end(bounded, job);
+  assert.equal(job.status, 'review');
+  assert.equal(job.alertPending, true);
+  await bounded.popup('acknowledge', { id: job.id });
+  const retried = await bounded.popup('start', { selection: [2, 3] });
+  assert.equal(retried.section, 2);
+  assert.deepEqual(Object.keys(retried.unavailable), []);
+  console.log('PASS exhausted routes stay marked for review during verification and can be retried explicitly');
 
   const checkpointRefresh = harness();
   job = await checkpointRefresh.popup('start', { selection: [4], pace: 0 });
