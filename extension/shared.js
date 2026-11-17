@@ -60,12 +60,14 @@ globalThis.Cleaner = Object.freeze({
     if (!name) throw new Error('The signed-in X account is required.');
     return this.origin + '/search?q=' + encodeURIComponent('from:' + name + ' filter:replies') + '&f=live';
   },
-  sectionTarget(index, handle, history = false, replySearch = false) {
+  sectionTarget(index, handle, history = false, replySearch = false, repostProfile = false) {
+    if (index === 2 && repostProfile) return this.sectionUrl(0, handle);
     if (index === 1 && replySearch) return this.replySearchUrl(handle);
     return history ? this.origin + '/i/history' : this.sectionUrl(index, handle);
   },
-  atSection(index, url, handle, history = false, replySearch = false) {
+  atSection(index, url, handle, history = false, replySearch = false, repostProfile = false) {
     const path = this.route(url);
+    if (index === 2 && repostProfile) return path === this.route(this.sectionUrl(0, handle));
     if (index === 1 && replySearch) {
       if (path !== '/search') return false;
       const query = new URL(url).searchParams;

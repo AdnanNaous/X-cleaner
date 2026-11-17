@@ -139,6 +139,10 @@
 
   function correctView() {
     if (!atSection()) return false;
+    if (job.section === 2) {
+      const tab = getRepostTab();
+      if (tab) return selectedTab(tab);
+    }
     if (!currentHistory()) return true;
     const tab = getHistoryTab();
     if (tab) return selectedTab(tab);
@@ -148,10 +152,26 @@
   }
 
   function atSection() {
-    return Cleaner.atSection(job.section, location.href, job.handle, job.history, job.replySearch);
+    return Cleaner.atSection(job.section, location.href, job.handle, job.history, job.replySearch, job.repostProfile);
+  }
+
+  function getRepostTab() {
+    const expected = Cleaner.route(Cleaner.sectionUrl(job.repostProfile ? 0 : 2, job.handle));
+    const labels = new Set(job.repostProfile ? ['posts', 'المنشورات'] : ['reposts', 'إعادات النشر']);
+    const tabs = all(primary(), '[role="tab"], [role="tablist"] a').filter(tab => !tab.closest(ARTICLE));
+    const linked = tabs.filter(tab => Cleaner.route(tab.href) === expected);
+    const matches = linked.length ? linked : tabs.filter(tab => labelled(tab, labels));
+    return matches.length === 1 ? matches[0] : null;
   }
 
   async function prepareView() {
+    if (job.section === 2 && atSection()) {
+      const tab = getRepostTab();
+      if (tab && !selectedTab(tab) && account() === 'verified' && !cancelled) {
+        tab.click();
+        return Boolean(await waitFor(() => correctView() || !atSection(), 8000)) && correctView();
+      }
+    }
     if (!currentHistory()) return correctView();
     if (correctView()) return true;
     const knownHistoryTab = await waitFor(getHistoryTab, 5000);
@@ -295,7 +315,7 @@
     const notice = pageNotice();
     if (/verify (you are|your identity)|automated request|account (is |has been )?(locked|suspended|restricted)|تم (قفل|تعليق|تقييد) حسابك/.test(notice)) {
       blockedByX = { reason: 'X displayed an account check or restriction. Resolve the prompt on X before continuing.', x: true };
-    } else if (/rate limit|too many requests|try again later|temporarily limited|معدل الطلبات|طلبات كثيرة|حاول مرة أخرى لاحقًا/.test(notice)) {
+    } else if (/rate limit|too many requests|temporarily limited|daily limit|request limit|معدل الطلبات|طلبات كثيرة|الحد اليومي/.test(notice)) {
       blockedByX = { reason: 'X displayed a rate limit. Cleanup paused. Continue once the wait ends and X works normally.', rateLimited: true };
     }
     return blockedByX;
@@ -808,7 +828,7 @@
           .some(link => profileHandle(link.href) === job.handle);
         const seemsEligible = !data && (job.section >= 2 || ownHeader ||
           (job.section === 1 && markedReply(card)));
-        const missingToggle = data && job.section >= 2 && !removed.has(key);
+        const missingToggle = data && job.section >= 2 && !removed.has(key) && !(job.section === 2 && job.repostProfile);
         if (job.section === 1 && !job.replySearch &&
             (seemsEligible || (data?.author === job.handle && !repostLabels.has(socialContext(card))))) {
           checkReplySearch = true;

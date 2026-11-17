@@ -293,10 +293,10 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(status.replySearch, true);
   assert.match(route.navigations.at(-1), /filter%3Areplies/);
   for (let attempt = 0; attempt < 3; attempt++) status = await route.change(status, { url: home });
-  assert.equal(status.status, 'paused');
+  assert.equal(status.status, 'running');
   assert.equal(status.section, 1);
-  assert.equal(status.alertPending, true);
-  await route.popup('acknowledge', { id: status.id });
+  assert.equal(status.pass, 2);
+  await route.popup('stop');
   job = await route.popup('start', { selection: [3, 4] });
   assert.equal(job.section, 3);
   for (let retry = 0; retry < 3; retry++) status = await route.change(job, { url: home });
@@ -320,10 +320,10 @@ const end = async (h, job, result = 'clear') => {
     await refresh.tab(job, 'hello');
     status = await refresh.tab(job, 'sectionIssue', { reason: 'Page issue' });
   }
-  assert.equal(status.status, 'paused');
+  assert.equal(status.status, 'running');
   assert.equal(status.section, 1);
-  assert.equal(status.alertPending, true);
-  console.log('PASS refresh targets Replies and exhausted page recovery shows a persistent alert');
+  assert.equal(status.replySearch, true);
+  console.log('PASS refresh targets Replies and exhausted primary-page recovery tries reply search');
 
   const search = harness();
   await assert.rejects(search.popup('start', { selection: [1], preview: true }), /updated X Cleaner/);
@@ -466,7 +466,7 @@ const end = async (h, job, result = 'clear') => {
   console.log('PASS Automatic adapts from 10 to 4 to 3 seconds and slows on failure, restoring tab policy on Stop');
 
   const watchdog = harness();
-  job = await watchdog.popup('start', { selection: [0], pace: 300000 });
+  job = await watchdog.popup('start', { selection: [0, 3], pace: 300000 });
   await watchdog.tab(job, 'hello');
   const waiting = candidate('delete', 3000);
   assert.ok((await watchdog.tab(job, 'begin', { item: waiting })).allowed);
@@ -488,13 +488,59 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(watchdog.reloads.length, 2);
   watchdog.tick(90001);
   job = await watchdog.alarm();
+  assert.equal(job.status, 'running');
+  assert.equal(job.section, 3);
+  assert.equal(job.results.find(result => result.section === 0).status, 'review');
+  assert.equal(watchdog.reloads.length, 2);
+  await watchdog.popup('stop');
+  assert.equal(watchdog.getTab(job).autoDiscardable, true);
+  console.log('PASS health alarm respects long waits, wakes frozen tabs, bounds reloads, and continues the route');
+
+  const unreadable = harness();
+  job = await unreadable.popup('start', { selection: [2, 3, 4], pace: 0 });
+  await unreadable.tab(job, 'hello');
+  for (let index = 0; index < 29; index++) {
+    const item = candidate('repost', 9000 + index, 'other');
+    assert.ok((await unreadable.tab(job, 'begin', { item })).allowed);
+    job = await unreadable.tab(job, 'settled', { url: item.url, ok: true });
+    unreadable.tick(60000);
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await unreadable.tab(job, 'hello');
+    job = await unreadable.tab(job, 'sectionIssue', { reason: 'X did not load a readable timeline.' });
+    unreadable.tick(60000);
+  }
+  assert.equal(job.repostProfile, true);
+  assert.equal(job.status, 'running');
+  assert.equal(job.totals.reposts, 29);
+  assert.equal(unreadable.navigations.at(-1), 'https://x.com/sample_user');
+  assert.equal(await unreadable.tab(job, 'hello', {}, { url: 'https://x.com/other' }), null);
+  await unreadable.tab(job, 'hello');
+  assert.equal(await unreadable.tab(job, 'begin', { item: candidate('delete', 9050) }), null);
+  await transfer(unreadable, job, 'repost', 9051);
+  job = await end(unreadable, job);
+  assert.equal(job.section, 3);
+  assert.equal(job.totals.reposts, 30);
+  job = await unreadable.tab(job, 'hello');
+  job = await unreadable.tab(job, 'sectionEnd', { result: 'review', fallback: true });
+  assert.equal(job.history, true);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await unreadable.tab(job, 'hello');
+    job = await unreadable.tab(job, 'sectionIssue', { reason: 'History did not load.' });
+    unreadable.tick(60000);
+  }
+  assert.equal(job.status, 'running');
+  assert.equal(job.section, 4);
+  assert.equal(job.results.find(result => result.section === 3).status, 'review');
+  await unreadable.tab(job, 'hello');
+  job = await unreadable.tab(job, 'pause', { reason: 'X displayed a rate limit.', rateLimited: true });
   assert.equal(job.status, 'paused');
   assert.equal(job.alertPending, true);
-  assert.equal(watchdog.getTab(job).autoDiscardable, true);
-  watchdog.tick(90001);
-  await watchdog.alarm();
-  assert.equal(watchdog.reloads.length, 2);
-  console.log('PASS health alarm respects long waits, wakes frozen tabs, bounds reloads, and preserves progress');
+  unreadable.tick(600000);
+  await unreadable.alarm();
+  assert.equal((await unreadable.popup('start', { selection: [2, 3, 4] })).status, 'paused');
+  assert.equal(job.totals.reposts, 30);
+  console.log('PASS unreadable Reposts after 29 removals falls back to the profile, retains counts and keeps genuine limits paused');
 
   const checkpointRefresh = harness();
   job = await checkpointRefresh.popup('start', { selection: [4], pace: 0 });

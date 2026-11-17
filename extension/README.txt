@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.7.0.zip.
+1. Extract X-Cleaner-1.7.1.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.7.0 folder.
+4. Select the entire extracted X-Cleaner-1.7.1 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
@@ -15,7 +15,8 @@ Click Clean everything or Clean selected once to start. The extension creates a
 dedicated X tab, visits the selected sections, and rechecks them. The popup
 shows the route, the current section, and sections that need review. If X
 sends the tab to Home, X Cleaner reopens the intended section up to twice.
-Replies can also use X Search. Bookmarks and Likes can use History. Leave that
+Replies can also use X Search. Reposts can fall back to your own profile
+and act only on active Undo repost controls. Bookmarks and Likes can use History. Leave that
 tab open and use another tab while it runs. Stop is available in the extension
 popup and in the progress panel on the cleanup tab. If X has already received
 the current request, it may still finish. Continue cleanup resumes the
@@ -57,3 +58,9 @@ The running cleanup tab is protected from Chrome automatic memory discard.
 A scheduled health check can reactivate a frozen tab or reload an unresponsive
 page. Stop and completion restore its original discard setting. Keep Chrome
 open. Device sleep and browser shutdown can interrupt cleanup.
+
+LOAD RECOVERY
+Ordinary timeline-loading failures receive paced retries and an alternate
+route where available. A section that remains unreadable is listed for review
+while other selected sections continue. Explicit rate-limit and account
+restriction notices keep the run paused until acknowledged and resumed.

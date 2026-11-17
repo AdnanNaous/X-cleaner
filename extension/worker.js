@@ -101,11 +101,11 @@ async function pause(job, reason, kind = 'issue') {
 }
 
 function atSection(job, url) {
-  return Cleaner.atSection(job.section, url, job.handle, job.history, job.replySearch);
+  return Cleaner.atSection(job.section, url, job.handle, job.history, job.replySearch, job.repostProfile);
 }
 
 async function navigate(job, { refresh = false } = {}) {
-  const target = Cleaner.sectionTarget(job.section, job.handle, job.history, job.replySearch);
+  const target = Cleaner.sectionTarget(job.section, job.handle, job.history, job.replySearch, job.repostProfile);
   job.documentId = null;
   job.refreshAt = Date.now() + Cleaner.refreshInterval;
   job.actionsSinceRefresh = 0;
@@ -160,7 +160,7 @@ async function checkHealth() {
     Date.now() - (job.lastContact || 0) >= 90000;
   if (!tab.discarded && !stalledLoad && Date.now() - deadline < 90000) return;
   if ((job.watchdogRecoveries || 0) >= 2) {
-    await pause(job, 'The cleanup page stopped responding after two reloads. Check X, then continue cleanup.');
+    await unavailableSection(job, 'The cleanup page stopped responding after two reloads.');
     return;
   }
   job.watchdogRecoveries = (job.watchdogRecoveries || 0) + 1;
@@ -170,12 +170,14 @@ async function checkHealth() {
   await navigate(job, { refresh: true });
 }
 
-async function openSection(job) {
+async function openSection(job, { repostProfile = false } = {}) {
   job.history = false;
   job.replySearch = false;
+  job.repostProfile = repostProfile;
   job.skippedHere = 0;
   job.batchActions = 0;
   job.recoveries = 0;
+  job.watchdogRecoveries = 0;
   job.itemsRechecked = false;
   job.redirects = 0;
   job.refreshPending = false;
@@ -197,6 +199,8 @@ function recordInterruptedAction(job, text) {
 async function openHistory(job) {
   job.history = true;
   job.redirects = 0;
+  job.recoveries = 0;
+  job.watchdogRecoveries = 0;
   job.message = `Looking for ${sections[job.section].name} in History…`;
   await navigate(job);
 }
@@ -206,9 +210,43 @@ async function openReplySearch(job) {
   job.skippedHere = 0;
   job.redirects = 0;
   job.itemsRechecked = false;
+  job.recoveries = 0;
+  job.watchdogRecoveries = 0;
   job.message = 'Replies · Checking your replies through X Search.';
   addEvent(job, job.message);
   await navigate(job);
+}
+
+async function openRepostProfile(job) {
+  job.repostProfile = true;
+  job.documentId = null;
+  job.recoveries = 0;
+  job.redirects = 0;
+  job.watchdogRecoveries = 0;
+  job.itemsRechecked = false;
+  job.skippedHere = 0;
+  job.nextActionAt = Math.max(job.nextActionAt || 0, Date.now() + Cleaner.itemRetryRest);
+  job.waitUntil = job.nextActionAt;
+  job.message = 'Reposts · The reposts list did not load. Checking your profile for active repost controls.';
+  addEvent(job, job.message);
+  await navigate(job);
+}
+
+async function unavailableSection(job, reason) {
+  recordInterruptedAction(job, 'The last action could not be verified before switching the recovery route.');
+  if (job.section === 2 && !job.repostProfile) {
+    await openRepostProfile(job);
+    return;
+  }
+  if ((job.section === 3 || job.section === 4) && !job.history) {
+    await openHistory(job);
+    return;
+  }
+  if (job.section === 1 && !job.replySearch) {
+    await openReplySearch(job);
+    return;
+  }
+  await finishSection(job, { result: 'review', detail: reason + ' Other selected sections will continue.' });
 }
 
 async function recoverRoute(job, url) {
@@ -238,15 +276,7 @@ async function recoverRoute(job, url) {
     await navigate(job);
     return;
   }
-  if ((job.section === 3 || job.section === 4) && !job.history) {
-    await openHistory(job);
-    return;
-  }
-  if (job.section === 1 && !job.replySearch) {
-    await openReplySearch(job);
-    return;
-  }
-  await pause(job, detail + ' The redirect persisted after two retries. Try again later.', 'x');
+  await unavailableSection(job, detail + ' The redirect persisted after two retries.');
 }
 
 async function start(old, selection, pace, accountHandle, paceMode) {
@@ -292,7 +322,7 @@ async function start(old, selection, pace, accountHandle, paceMode) {
   if (old?.handle === accountHandle && old.tabId === tab.id) {
     job.originalAutoDiscardable = old.originalAutoDiscardable;
   }
-  await openSection(job);
+  await openSection(job, { repostProfile: Boolean(resume && old.repostProfile) });
   return job;
 }
 
@@ -341,6 +371,7 @@ async function refreshSection(job, message) {
   const reason = String(message.reason || '').slice(0, 180);
   if (mode === 'recovery') {
     job.recoveries++;
+    if (job.paceMode === 'auto') job.pace = Cleaner.automaticPace(job, false);
     job.nextActionAt = Math.max(job.nextActionAt, Date.now() + 30000 * job.recoveries);
     job.problem = { text: reason, url: job.problem?.url };
     addEvent(job, `${sections[job.section].name} · Retry ${job.recoveries}/2 · ${reason}`);
@@ -576,10 +607,14 @@ async function handle(message, sender) {
     if (job.pending) recordInterruptedAction(job, 'The last action could not be verified.');
     const reason = String(message.reason || 'X could not load this section.').slice(0, 180);
     const outcome = await refreshSection(job, { mode: 'recovery', reason });
-    if (outcome.exhausted) return pause(job, `${reason} Try again later, then continue from the popup.`, 'x');
+    if (outcome.exhausted) await unavailableSection(job, reason);
     return job;
   }
   if (message.type === 'sectionEnd' && !job.pending) {
+    if (job.section === 2 && !job.repostProfile && message.result !== 'clear') {
+      await openRepostProfile(job);
+      return job;
+    }
     if (job.section === 1 && !job.replySearch && message.checkReplySearch === true) {
       await openReplySearch(job);
       return job;

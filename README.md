@@ -6,9 +6,9 @@
 
 Clean up your own posts, replies, reposts, bookmarks, and likes on X. The extension detects the signed-in account and shows its handle before you start.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.0.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.1.zip?raw=true)
 
-**Version 1.7.0 · ZIP · Manual installation on desktop Chromium browsers**
+**Version 1.7.1 · ZIP · Manual installation on desktop Chromium browsers**
 
 ## Install and run
 
@@ -16,7 +16,7 @@ The images below use real Windows and Chrome screenshots with arrows and X Clean
 
 ### 1. Extract the ZIP
 
-On Windows, right-click `X-Cleaner-1.7.0.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
+On Windows, right-click `X-Cleaner-1.7.1.zip`, choose **Extract All…**, then click **Extract**. On macOS, double-click the ZIP. On Linux, use your archive manager to extract it.
 
 ![File Explorer with an arrow pointing to Extract All](./docs/images/01-extract.png)
 
@@ -28,7 +28,7 @@ Type `chrome://extensions` in Chrome’s address bar and press Enter. Turn on **
 
 ### 3. Select the extracted folder
 
-Select the entire extracted **X-Cleaner-1.7.0** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
+Select the entire extracted **X-Cleaner-1.7.1** folder (1), then click **Select Folder** (2). If you downloaded the repository source through **Code → Download ZIP**, select the `extension` folder inside the extracted repository.
 
 ![Chrome’s folder picker highlighting the entire extracted X Cleaner folder and Select Folder](./docs/images/03-select-folder.png)
 
@@ -42,7 +42,7 @@ Select the entire extracted **X-Cleaner-1.7.0** folder (1), then click **Select 
 
 Screenshots adapted from [Digital Citizen](https://www.digitalcitizen.life/how-unzip-file-windows/), [Chrome for Developers](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), and [ViewGrip](https://www.viewgrip.net/help/how-to-install-viewgrip-extension-on-chrome).
 
-Replies can also use X Search filtered to the signed-in account when the profile timeline does not identify reply cards.
+Replies can also use X Search filtered to the signed-in account when the profile timeline does not identify reply cards. If the Reposts list stops loading after removals, the cleaner retries it, then checks active repost controls on your own profile. Ordinary posts in that fallback are ignored. A section that remains unreadable is marked for review while the remaining selected sections continue. Explicit X restrictions and sign-in checks pause the whole run.
 
 **Speed** defaults to **Automatic**. It starts with 10-second waits, moves to 4 then 3 seconds after repeated quick confirmations, and slows to 15 seconds after an error or slow response. For a fixed wait, choose **Custom delay** and enter 0–3600 seconds. Every action is verified before the next one. A 45-second break follows six actions. The popup keeps the counters visible and places the route and activity log under **Details**.
 

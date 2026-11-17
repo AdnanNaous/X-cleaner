@@ -56,11 +56,11 @@ function harness() {
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync('extension/shared.js', 'utf8'), context);
   const source = fs.readFileSync('extension/cleaner.js', 'utf8').split('  run().catch')[0];
-  vm.runInContext(source + 'globalThis.fixture = { account, signedInHandle, apply, clearBookmarks, identify, parseCard, rateLimited, scan, setJob(value) {job = value;} }; })();', context);
+  vm.runInContext(source + 'globalThis.fixture = { account, signedInHandle, apply, clearBookmarks, identify, parseCard, rateLimited, scan, prepareView, setJob(value) {job = value;} }; })();', context);
   const api = context.fixture;
-  const job = (section, selected = [0, 1, 2, 3, 4], replySearch = false) => {
-    location.href = context.Cleaner.sectionTarget(section, 'sample_user', false, replySearch);
-    api.setJob({ section, handle: 'sample_user', selected, replySearch, id: 'run', pass: 1 });
+  const job = (section, selected = [0, 1, 2, 3, 4], replySearch = false, repostProfile = false) => {
+    location.href = context.Cleaner.sectionTarget(section, 'sample_user', false, replySearch, repostProfile);
+    api.setJob({ section, handle: 'sample_user', selected, replySearch, repostProfile, id: 'run', pass: 1 });
   };
   function card(author, id, control, contextLabel = '') {
     const article = new Element();
@@ -84,6 +84,37 @@ function harness() {
 }
 
 (async () => {
+  const fallback = harness();
+  fallback.job(2, [2], false, true);
+  const ordinary = fallback.card('sample_user', 1010, 'caret');
+  assert.equal(fallback.api.identify(ordinary.article), null);
+  await fallback.api.scan();
+  assert.equal(fallback.calls.at(-1).type, 'sectionEnd');
+  assert.equal(fallback.calls.at(-1).result, 'clear');
+  assert.equal(fallback.calls.some(call => call.type === 'begin'), false);
+  const actualRepost = fallback.card('other', 1011, 'unretweet');
+  assert.equal(fallback.api.identify(actualRepost.article), 'repost');
+  fallback.location.href = 'https://x.com/other';
+  assert.equal(await fallback.api.apply({ ...fallback.api.parseCard(actualRepost.article), kind: 'repost' }), 'deferred');
+  const selection = harness();
+  selection.job(2, [2]);
+  const repostTab = new Element('Reposts', selection.location.href);
+  repostTab.attributes.set('aria-selected', 'false');
+  selection.primary.find.set('[role="tab"], [role="tablist"] a', [repostTab]);
+  let selected = 0;
+  repostTab.onclick = () => {
+    selected++;
+    repostTab.attributes.set('aria-selected', 'true');
+  };
+  assert.equal(await selection.api.prepareView(), true);
+  assert.equal(selected, 1);
+  const generic = harness();
+  generic.document.find.set(NOTICES, [new Element('Something went wrong. Try again later.')]);
+  assert.equal(generic.api.rateLimited(), false);
+  generic.document.find.set(NOTICES, [new Element('Too many requests. Rate limit exceeded.')]);
+  assert.equal(generic.api.rateLimited(), true);
+  console.log('PASS Reposts fallback ignores ordinary posts, selects its tab and separates loading failures from rate limits');
+
   const unlabelled = harness();
   unlabelled.job(1, [1]);
   const contextCards = Array.from({ length: 56 }, (_, index) => unlabelled.card('other', index + 10, 'caret').article);
