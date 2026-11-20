@@ -153,6 +153,7 @@ function harness() {
   marker.ancestors.set(nonReplyContext, marker);
   assert.equal(h.api.identify(owned.article), 'delete');
   marker.ancestors.delete(nonReplyContext);
+  marker.find.delete('a[href]');
   marker.innerText = 'ردًا على @other';
   h.job(1, [1]);
   assert.equal(h.api.identify(owned.article), 'delete');
@@ -284,6 +285,35 @@ function harness() {
   assert.equal(await direct.api.apply({ ...direct.api.parseCard(oneClick.article), kind: 'repost' }), 'changed');
   assert.equal(toggles, 1);
   console.log('PASS direct Undo repost verifies the state change without reposting the item again');
+
+  for (const repostProfile of [false, true]) {
+    const missing = harness();
+    missing.job(2, [2], false, repostProfile);
+    const target = missing.card('other', 551, 'unretweet');
+    target.button.onclick = () => {
+      target.article.isConnected = false;
+      missing.primary.find.set(ARTICLE, []);
+      missing.primary.find.set(EMPTY, [new Element('No reposts yet')]);
+    };
+    assert.equal(await missing.api.apply({ ...missing.api.parseCard(target.article), kind: 'repost' }),
+      repostProfile ? 'failed' : 'changed');
+  }
+
+  const inPlace = harness();
+  inPlace.job(2, [2]);
+  const deferredRepost = inPlace.card('other', 552, 'unretweet');
+  let attempts = 0;
+  deferredRepost.button.onclick = () => {
+    if (++attempts < 2) return;
+    deferredRepost.article.isConnected = false;
+    inPlace.primary.find.set(ARTICLE, []);
+    inPlace.primary.find.set(EMPTY, [new Element('No reposts yet')]);
+  };
+  await inPlace.api.scan();
+  assert.equal(attempts, 2);
+  assert.equal(inPlace.calls.some(call => call.type === 'refresh'), false);
+  assert.equal(inPlace.calls.at(-1).result, 'clear');
+  console.log('PASS an Undo repost disappearance is verified in Reposts, and deferred reposts retry without a reload');
 
   const shared = harness();
   shared.job(3, [3]);

@@ -1,10 +1,10 @@
 X Cleaner
 
 INSTALL ON CHROME
-1. Extract X-Cleaner-1.7.2.zip.
+1. Extract X-Cleaner-1.7.3.zip.
 2. In Chrome, enter chrome://extensions in the address bar.
 3. Turn on Developer mode and choose Load unpacked.
-4. Select the entire extracted X-Cleaner-1.7.2 folder.
+4. Select the entire extracted X-Cleaner-1.7.3 folder.
 5. Pin X Cleaner from Chrome's Extensions menu if you want it on the toolbar.
 
 RUN
@@ -38,13 +38,12 @@ then uses 4 or 3 seconds after quick confirmations. An error or slow response
 raises the wait to 15 seconds. Custom delay accepts 0 to 3600 seconds.
 Every action is verified before the next one.
 After six actions in a section, X Cleaner waits at least 45 seconds and
-continues in the same page. It refreshes when checking the end of a timeline
-or recovering from a loading error. Items that fail twice are listed for review
+continues on the same page. A loading failure can trigger a recovery reload. Items that fail twice are listed for review
 while the rest of the route continues. If X exposes its built-in Clear all
 Bookmarks command, X Cleaner checks for the empty list before reporting All.
 Eligible items that could not be processed are rechecked after a short
-break. The current page refreshes after 10 minutes or 40 actions once the current action
-settles. The run keeps its route, totals, and cooldown. If X shows a rate
+break without reloading the current page. A recovery reload keeps the route,
+totals, and cooldown. If X shows a rate
 limit or account restriction, the run stops and displays elapsed pause time.
 Select OK to acknowledge the persistent alert. Resume manually when X is ready.
 X prohibits scripting its website and can restrict accounts. No pace can

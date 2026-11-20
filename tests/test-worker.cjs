@@ -241,12 +241,12 @@ const end = async (h, job, result = 'clear') => {
   job = await end(recover, job);
   await recover.tab(job, 'hello');
   for (const seconds of [30, 60]) {
-    assert.ok((await recover.tab(job, 'refresh', { mode: 'recovery', reason: 'X stalled' })).reloading);
+    await recover.tab(job, 'sectionIssue', { reason: 'X stalled' });
     await recover.tab(job, 'hello');
     assert.equal((await recover.tab(job, 'begin', { item: candidate('delete') })).wait, seconds * 1000);
     recover.tick(seconds * 1000);
   }
-  assert.ok((await recover.tab(job, 'refresh', { mode: 'recovery', reason: 'X stalled' })).exhausted);
+  assert.equal(recover.reloads.length, 2);
   assert.equal((await recover.tab(job, 'pause', { reason: 'X rate limit', rateLimited: true })).status, 'paused');
   assert.equal((await recover.popup('start', { selection: [0, 1] })).status, 'paused');
   const paused = await recover.popup('status');
@@ -313,7 +313,7 @@ const end = async (h, job, result = 'clear') => {
   job = await refresh.popup('start', { selection: [1] });
   await refresh.tab(job, 'hello');
   refresh.setTab(job, { url: home });
-  assert.equal((await refresh.tab(job, 'refresh', { mode: 'recovery', reason: 'Page issue' })).reloading, true);
+  await refresh.tab(job, 'sectionIssue', { reason: 'Page issue' });
   assert.equal(refresh.reloads.length, 0);
   assert.equal(refresh.navigations.at(-1), replies);
   for (let issue = 0; issue < 2; issue++) {
@@ -411,9 +411,9 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(await scheduled.tab(job, 'refresh', { mode: 'periodic' }), null);
   assert.equal(scheduled.reloads.length, 0);
   await scheduled.tab(job, 'settled', { url: repeated.url, ok: true, sent: true });
-  assert.ok((await scheduled.tab(job, 'refresh', { mode: 'periodic' })).reloading);
-  assert.equal(scheduled.reloads.at(-1).options.bypassCache, true);
-  const after = await scheduled.tab(job, 'hello');
+  assert.equal(await scheduled.tab(job, 'refresh', { mode: 'periodic' }), null);
+  assert.equal(await scheduled.tab(job, 'refresh', { mode: 'tail' }), null);
+  const after = await scheduled.popup('status');
   assert.equal(after.id, job.id);
   assert.equal(after.section, 0);
   assert.equal(after.totals.deleted, 1);
@@ -423,8 +423,8 @@ const end = async (h, job, result = 'clear') => {
   assert.equal((await scheduled.tab(job, 'settled', { url: repeated.url, ok: true, sent: true })).totals.deleted, 1);
   scheduled.tick(15000);
   assert.ok((await scheduled.tab(job, 'begin', { item: repeated })).skipped);
-  assert.equal(scheduled.reloads.length, 1);
-  console.log('PASS 10-minute refresh waits for settlement, bypasses cache, preserves cooldown and avoids duplicate counts');
+  assert.equal(scheduled.reloads.length, 0);
+  console.log('PASS cleanup continues in the same document after ten minutes and preserves cooldown and counts');
 
   const retry = harness();
   job = await retry.popup('start', { selection: [1], pace: 0 });
@@ -433,13 +433,12 @@ const end = async (h, job, result = 'clear') => {
   assert.ok((await retry.tab(job, 'begin', { item: deferred })).allowed);
   await retry.tab(job, 'settled', { url: deferred.url, issue: 'Button moved' });
   assert.ok((await retry.tab(job, 'begin', { item: deferred })).retry);
-  assert.ok((await retry.tab(job, 'refresh', { mode: 'items' })).reloading);
-  await retry.tab(job, 'hello');
-  assert.equal((await retry.tab(job, 'begin', { item: deferred })).wait, 30000);
+  assert.equal(await retry.tab(job, 'refresh', { mode: 'items' }), null);
+  assert.equal(retry.reloads.length, 0);
   retry.tick(30000);
   assert.ok((await retry.tab(job, 'begin', { item: deferred })).allowed);
   assert.equal((await retry.tab(job, 'settled', { url: deferred.url, ok: true })).totals.deleted, 1);
-  assert.ok((await retry.tab(job, 'refresh', { mode: 'items' })).exhausted);
+  assert.equal(retry.reloads.length, 0);
   console.log('PASS temporary failure is retried after a bounded cooldown');
 
   const automatic = harness();
@@ -566,14 +565,6 @@ const end = async (h, job, result = 'clear') => {
   assert.equal(retried.section, 2);
   assert.deepEqual(Object.keys(retried.unavailable), []);
   console.log('PASS exhausted routes stay marked for review during verification and can be retried explicitly');
-
-  const checkpointRefresh = harness();
-  job = await checkpointRefresh.popup('start', { selection: [4], pace: 0 });
-  await checkpointRefresh.tab(job, 'hello');
-  checkpointRefresh.stores.session.job.actionsSinceRefresh = 40;
-  assert.ok((await checkpointRefresh.tab(job, 'refresh', { mode: 'periodic' })).reloading);
-  assert.equal((await checkpointRefresh.popup('status')).actionsSinceRefresh, 0);
-  console.log('PASS forty-action checkpoint forces a full refresh before continuing');
 
   const identity = harness();
   assert.equal((await identity.popup('detect')).handle, 'sample_user');

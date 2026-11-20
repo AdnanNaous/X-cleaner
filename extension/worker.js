@@ -2,7 +2,7 @@
 importScripts('shared.js');
 
 const { sections } = Cleaner;
-const MAX_PASSES = 4;
+const MAX_PASSES = 2;
 const STORAGE = 'job';
 const MAX_ITEM_ATTEMPTS = 2;
 const WATCHDOG = 'cleanup-health';
@@ -107,8 +107,6 @@ function atSection(job, url) {
 async function navigate(job, { refresh = false } = {}) {
   const target = Cleaner.sectionTarget(job.section, job.handle, job.history, job.replySearch, job.repostProfile);
   job.documentId = null;
-  job.refreshAt = Date.now() + Cleaner.refreshInterval;
-  job.actionsSinceRefresh = 0;
   job.lastContact = Date.now();
   try {
     await protectTab(job);
@@ -183,7 +181,6 @@ async function openSection(job, { repostProfile = false } = {}) {
   job.batchActions = 0;
   job.recoveries = 0;
   job.watchdogRecoveries = 0;
-  job.itemsRechecked = false;
   job.redirects = 0;
   job.refreshPending = false;
   job.waitUntil = 0;
@@ -214,7 +211,6 @@ async function openReplySearch(job) {
   job.replySearch = true;
   job.skippedHere = 0;
   job.redirects = 0;
-  job.itemsRechecked = false;
   job.recoveries = 0;
   job.watchdogRecoveries = 0;
   job.message = 'Replies · Checking your replies through X Search.';
@@ -228,7 +224,6 @@ async function openRepostProfile(job) {
   job.recoveries = 0;
   job.redirects = 0;
   job.watchdogRecoveries = 0;
-  job.itemsRechecked = false;
   job.skippedHere = 0;
   job.nextActionAt = Math.max(job.nextActionAt || 0, Date.now() + Cleaner.itemRetryRest);
   job.waitUntil = job.nextActionAt;
@@ -348,7 +343,7 @@ async function finishSection(job, message) {
     await openSection(job);
     return;
   }
-  if (job.pass === 1 || (job.changes > 0 && job.pass < MAX_PASSES)) {
+  if (job.pass < MAX_PASSES) {
     job.pass++;
     job.section = job.selected[0];
     job.changes = 0;
@@ -368,44 +363,19 @@ async function finishSection(job, message) {
   await write(job);
 }
 
-async function refreshSection(job, message) {
-  const mode = message.mode;
-  if (mode === 'tail' && !job.batchActions) return null;
-  if (mode === 'items' && job.itemsRechecked) return { exhausted: true };
-  if (mode === 'periodic' && !Cleaner.refreshDue(job)) return null;
-  if (mode === 'recovery' && job.recoveries >= 2) return { exhausted: true };
-  if (!['tail', 'items', 'periodic', 'recovery'].includes(mode)) return null;
-
-  const reason = String(message.reason || '').slice(0, 180);
-  if (mode === 'recovery') {
-    job.recoveries++;
-    if (job.paceMode === 'auto') job.pace = Cleaner.automaticPace(job, false);
-    job.nextActionAt = Math.max(job.nextActionAt, Date.now() + 30000 * job.recoveries);
-    job.problem = { text: reason, url: job.problem?.url };
-    addEvent(job, `${sections[job.section].name} · Retry ${job.recoveries}/2 · ${reason}`);
-  } else if (mode === 'items') {
-    job.itemsRechecked = true;
-    job.nextActionAt = Math.max(job.nextActionAt, Date.now() + Cleaner.itemRetryRest);
-    addEvent(job, `${sections[job.section].name} · Rechecking deferred items`);
-  } else if (mode === 'periodic') {
-    addEvent(job, `${sections[job.section].name} · Refreshing the timeline checkpoint`);
+async function recoverSection(job, reason) {
+  if (job.recoveries >= 2) {
+    await unavailableSection(job, reason);
+    return;
   }
-  if (mode !== 'periodic') {
-    job.batchActions = 0;
-    job.refreshPending = false;
-  }
-  job.skippedHere = 0;
+  job.recoveries++;
+  if (job.paceMode === 'auto') job.pace = Cleaner.automaticPace(job, false);
+  job.nextActionAt = Math.max(job.nextActionAt, Date.now() + 30000 * job.recoveries);
+  job.problem = { text: reason, url: job.problem?.url };
   job.waitUntil = job.nextActionAt;
-  const name = sections[job.section].name;
-  const messages = {
-    recovery: `Retrying ${name} after an X page issue.`,
-    items: `${name} · Waiting 30 seconds or longer before checking deferred items.`,
-    periodic: `${name} · Refreshing the timeline and resuming where cleanup left off.`,
-    tail: `${name} · Checking for more items after a break.`
-  };
-  job.message = messages[mode];
+  job.message = `Retrying ${sections[job.section].name} after an X page issue.`;
+  addEvent(job, `${sections[job.section].name} · Retry ${job.recoveries}/2 · ${reason}`);
   await navigate(job, { refresh: true });
-  return { reloading: job.status === 'running' };
 }
 
 function validPending(item, accountHandle) {
@@ -484,12 +454,10 @@ async function handle(message, sender) {
   if (!fromTab) return null;
   if (message.type === 'hello' && job.status === 'running' && atSection(job, sender.url)) {
     if (job.documentId && job.documentId !== sender.documentId) {
-      job.refreshAt = Date.now() + Cleaner.refreshInterval;
       recordInterruptedAction(job, 'X reloaded the page before the last action could be verified. Rescanning this section.');
       job.message = `Rechecking ${sections[job.section].name} after a page reload…`;
     }
     job.documentId = sender.documentId;
-    job.refreshAt ||= Date.now() + Cleaner.refreshInterval;
     job.lastContact = Date.now();
     await write(job);
     return job;
@@ -522,7 +490,6 @@ async function handle(message, sender) {
       }
       job.changes++;
       job.watchdogRecoveries = 0;
-      job.recoveries = 0;
       if (job.itemFailures) delete job.itemFailures[key];
       if (job.problem?.url === message.url) job.problem = null;
     } else if (!message.cancelled) {
@@ -536,7 +503,6 @@ async function handle(message, sender) {
     }
     if (message.sent || message.ok) {
       job.batchActions++;
-      job.actionsSinceRefresh = (job.actionsSinceRefresh || 0) + 1;
     }
     if (job.paceMode === 'auto' && !message.cancelled) {
       job.pace = Cleaner.automaticPace(job, message.ok === true, duration);
@@ -610,12 +576,10 @@ async function handle(message, sender) {
     const tab = await chrome.tabs.get(job.tabId);
     return { allowed: atSection(job, tab.url) && !tab.pendingUrl };
   }
-  if (message.type === 'refresh' && !job.pending) return refreshSection(job, message);
   if (message.type === 'sectionIssue') {
     if (job.pending) recordInterruptedAction(job, 'The last action could not be verified.');
     const reason = String(message.reason || 'X could not load this section.').slice(0, 180);
-    const outcome = await refreshSection(job, { mode: 'recovery', reason });
-    if (outcome.exhausted) await unavailableSection(job, reason);
+    await recoverSection(job, reason);
     return job;
   }
   if (message.type === 'sectionEnd' && !job.pending) {

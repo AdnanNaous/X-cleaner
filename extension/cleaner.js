@@ -32,6 +32,8 @@
     'تم حذف المنشور', 'تم حذف منشورك'
   ]);
   const undoLabels = new Set(['undo repost', 'undo retweet', 'التراجع عن إعادة النشر', 'إلغاء إعادة النشر']);
+  const undoNotices = new Set(['repost undone', 'retweet undone', 'your repost was undone',
+    'تم التراجع عن إعادة النشر', 'تم إلغاء إعادة النشر']);
   const toggleLabels = {
     repost: ['undo repost', 'undo retweet', 'reposted', 'التراجع عن إعادة النشر', 'إلغاء إعادة النشر', 'أعدت النشر'],
     bookmark: ['remove bookmark', 'remove from bookmarks', 'bookmarked', 'إزالة العلامة المرجعية', 'إزالة من العلامات المرجعية'],
@@ -214,11 +216,14 @@
 
   function markedReply(card) {
     return all(card, '[data-testid="replyingTo"], [data-testid="replyingToContext"], [dir="auto"]')
-      .some(node => node.closest(ARTICLE) === card &&
-        !node.closest('[data-testid="tweetText"], [data-testid="User-Name"], [data-testid="UserName"], [data-testid="quoteTweet"], [data-testid="card.wrapper"]') &&
-        (['replyingTo', 'replyingToContext'].includes(node.getAttribute('data-testid')) ||
-          (/^(?:replying to|رد(?:ً?ا|ّ)? على)(?:\s|$)/.test(normalize(node.innerText)) &&
-            all(node, 'a[href]').some(link => profileHandle(link.href)))));
+      .some(node => {
+        if (node.closest(ARTICLE) !== card ||
+            node.closest('[data-testid="tweetText"], [data-testid="User-Name"], [data-testid="UserName"], [data-testid="quoteTweet"], [data-testid="card.wrapper"]')) return false;
+        if (['replyingTo', 'replyingToContext'].includes(node.getAttribute('data-testid'))) return true;
+        const context = normalize(node.innerText).match(/^(?:replying to|رد(?:ً?ا|ّ)? على) (.+)$/)?.[1];
+        return Boolean(context && (/^@[a-z0-9_]{1,15}\b/.test(context) ||
+          all(node, 'a[href]').some(link => profileHandle(link.href))));
+      });
   }
 
   function identify(card, data = parseCard(card)) {
@@ -281,7 +286,7 @@
 
   function labelled(node, labels) {
     return [node?.innerText, node?.textContent, node?.getAttribute('aria-label')]
-      .some(value => labels.has(normalize(value)));
+      .some(value => labels.has(normalize(value).replace(/[.!。]$/, '')));
   }
 
   function confirmationSheet(previous) {
@@ -298,10 +303,10 @@
     if (enabled(cancel)) cancel.click();
   }
 
-  function newDeletionNotice(previous) {
+  function newNotice(previous, labels) {
     return all(document, NOTICES).some(node => {
       const message = normalize(node.innerText || node.textContent);
-      return previous.get(node) !== message && deletedNotices.has(message.replace(/[.!。]$/, ''));
+      return previous.get(node) !== message && labels.has(message.replace(/[.!。]$/, ''));
     });
   }
 
@@ -325,21 +330,12 @@
     return Boolean(restriction());
   }
 
-  function refreshDue() {
-    return Cleaner.refreshDue(job);
-  }
-
   async function waitUntil(time) {
     while (!cancelled && Date.now() < time) {
-      if (!routeAndAccount() || refreshDue()) return false;
-      await sleep(Math.min(700, time - Date.now(), job.refreshAt ? job.refreshAt - Date.now() : 700));
+      if (!routeAndAccount()) return false;
+      await sleep(Math.min(700, time - Date.now()));
     }
-    return !cancelled && routeAndAccount() && !refreshDue();
-  }
-
-  async function refreshTimeline() {
-    const result = await ask('refresh', { mode: 'periodic' });
-    return Boolean(result?.reloading || cancelled);
+    return !cancelled && routeAndAccount();
   }
 
   function timelineError() {
@@ -488,6 +484,13 @@
     if (!permission?.allowed) return 'deferred';
     let clicked = false;
     let directRepost = false;
+    let repostBaseline;
+    const cardsInView = () => all(primary(), ARTICLE);
+    const matchesTarget = data => data?.id === item.id && data.author === item.author;
+    const matchingCards = () => cardsInView().map(parseCard).filter(matchesTarget);
+    const timelineReadable = () => cardsInView().some(card => parseCard(card)) || emptyTimeline();
+    const repostDisappeared = () => !job.repostProfile && !visible(item.card) &&
+      !matchingCards().length && timelineReadable();
     let deleteBaseline;
     let confirmation;
     let openedMenu = false;
@@ -524,23 +527,33 @@
         }
         const repostButton = toggle(item.card, 'repost');
         if (!enabled(repostButton)) return fail('The repost control was missing or disabled.');
+        const approval = await ask('check', { url: item.url });
+        if (cancelled || !approval?.allowed || !routeAndAccount() || !validCard(item) ||
+            toggle(item.card, 'repost') !== repostButton || !enabled(repostButton)) {
+          return fail('The repost changed before its control could be used.');
+        }
+        repostBaseline = new Map(all(document, NOTICES).map(node =>
+          [node, normalize(node.innerText || node.textContent)]));
         repostButton.click();
+        clicked = true;
         openedMenu = true;
         const action = await waitFor(() => {
           const choice = unique(document, '[data-testid="unretweetConfirm"]');
           const confirm = enabled(choice) && labelled(choice, undoLabels) ? choice
-            : menuItem('[role="menuitem"]', undoLabels);
+            : menuItem('[role="menuitem"]', undoLabels) ||
+              menuItem('button, [role="button"]', undoLabels);
           if (confirm) return { button: confirm };
-          const live = all(primary(), ARTICLE).map(parseCard)
-            .filter(data => data?.id === item.id && data.author === item.author);
-          if (live.length === 1 && toggle(live[0].card, 'repost', false) && !toggle(live[0].card, 'repost')) {
+          if (restriction() || timelineError()) return { issue: true };
+          const live = matchingCards();
+          if (newNotice(repostBaseline, undoNotices) || repostDisappeared() ||
+              (live.length === 1 && toggle(live[0].card, 'repost', false) && !toggle(live[0].card, 'repost'))) {
             return { direct: true };
           }
           return null;
         }, 7500);
+        if (action?.issue) return fail('X reported an error while opening Undo repost.');
         if (!action) return fail('The Undo repost confirmation did not appear.');
         directRepost = Boolean(action.direct);
-        clicked = directRepost;
         button = action.button;
       } else {
         button = toggle(item.card, item.kind);
@@ -573,8 +586,7 @@
       }
       const oldNotices = new Map(all(document, NOTICES).map(node =>
         [node, normalize(node.innerText || node.textContent)]));
-      const renderedCards = () => all(primary(), ARTICLE);
-      const targetStillRendered = () => renderedCards().some(card => parseCard(card)?.id === item.id);
+      const targetStillRendered = () => matchingCards().length > 0;
       const presentBeforeClick = item.kind !== 'delete' || targetStillRendered();
       if (!directRepost) {
         button.click();
@@ -593,6 +605,7 @@
           return live.every(data => Boolean(toggle(data.card, item.kind, false)) && !toggle(data.card, item.kind));
         }
         if (live.length) return false;
+        if (item.kind === 'repost') return repostDisappeared() && !all(document, DROPDOWN).length;
         if (item.card.isConnected && parseCard(item.card)?.id === item.id) return false;
         if (!cards.length && !emptyTimeline()) return false;
         if (item.kind === 'delete') return presentBeforeClick && !targetStillRendered();
@@ -601,13 +614,11 @@
       let changedAt = null;
       const verified = await waitFor(() => {
         if (restriction() || timelineError()) return 'issue';
-        if (item.kind === 'bookmark' && all(document, NOTICES).some(node => {
-          const text = normalize(node.innerText || node.textContent);
-          return oldNotices.get(node) !== text && bookmarkNotices.has(text.replace(/[.!。]$/, ''));
-        })) return 'verified';
+        if (item.kind === 'bookmark' && newNotice(oldNotices, bookmarkNotices)) return 'verified';
+        if (item.kind === 'repost' && newNotice(repostBaseline, undoNotices)) return 'verified';
         if (deleteBaseline) {
           const open = confirmationSheet(deleteBaseline);
-          if (newDeletionNotice(oldNotices)) {
+          if (newNotice(oldNotices, deletedNotices)) {
             closeConfirmation(open);
             return 'verified';
           }
@@ -622,7 +633,8 @@
           return null;
         }
         changedAt ??= Date.now();
-        return Date.now() - changedAt >= (item.kind === 'delete' ? 1250 : 650) ? 'verified' : null;
+        const stableFor = item.kind === 'delete' || (item.kind === 'repost' && !targetStillRendered()) ? 1250 : 650;
+        return Date.now() - changedAt >= stableFor ? 'verified' : null;
       }, 22000, true);
       ok = verified === 'verified' && routeAndAccount();
       return ok ? 'changed' : fail(verified === 'issue'
@@ -642,7 +654,7 @@
       });
       batchDue = Boolean(state?.refreshPending);
       nextActionAt = state?.nextActionAt || 0;
-      if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode, actionsSinceRefresh: state.actionsSinceRefresh });
+      if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode });
     }
   }
 
@@ -707,7 +719,7 @@
         });
         batchDue = Boolean(state?.refreshPending);
         nextActionAt = state?.nextActionAt || 0;
-        if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode, actionsSinceRefresh: state.actionsSinceRefresh });
+        if (state) Object.assign(job, { pace: state.pace, paceMode: state.paceMode });
       }
     }
   }
@@ -741,7 +753,7 @@
       return;
     }
     if (job.waitUntil > Date.now() && !await waitUntil(job.waitUntil)) {
-      if (!cancelled && !(refreshDue() && routeAndAccount() && await refreshTimeline())) await reportLostView();
+      if (!cancelled) await reportLostView();
       return;
     }
     const ready = await waitFor(() => {
@@ -776,18 +788,21 @@
     let previous = '';
     let lastReport = '';
     let lastSkipped = -1;
+    let lastContact = 0;
+    let rechecked = false;
     let detail = '';
     let repeatDeferred = 0;
     let deferredKey;
 
     async function update(text, waiting = false) {
-      if (text === lastReport && skipped.size === lastSkipped) return;
+      if (text === lastReport && skipped.size === lastSkipped && Date.now() - lastContact < 30000) return;
+      lastContact = Date.now();
       lastReport = text;
       lastSkipped = skipped.size;
       await ask('progress', { text, skipped: skipped.size, waiting });
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
     while (!cancelled) {
       const blocked = restriction();
       if (blocked) {
@@ -802,7 +817,6 @@
         detail = 'X reported a timeline loading error.';
         break;
       }
-      if (refreshDue() && await refreshTimeline()) return;
       if (batchDue) {
         await update(`${name} · Break after six actions`, true);
         if (await waitUntil(nextActionAt)) batchDue = false;
@@ -888,7 +902,7 @@
       }
 
       await update(`${name} · Scanning for older items · Pass ${job.pass}`);
-      if (emptyTimeline() && !cards.length) break;
+      const empty = emptyTimeline() && !cards.length;
       const y = scrollRoot.scrollTop;
       const max = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
       const atBottom = y >= max - 12;
@@ -896,7 +910,25 @@
       const loading = all(primary(), '[role="progressbar"], [data-testid="spinner"]').length > 0;
       still = atBottom && signature === previous && !loading ? still + 1 : 0;
       previous = signature;
-      if (still >= 5) break;
+      if (empty || still >= 5) {
+        if (rechecked || (!needsRetry.size && !ambiguous.size)) break;
+        rechecked = true;
+        if (needsRetry.size) {
+          await update(`${name} · Waiting to recheck deferred items`);
+          if (!await waitUntil(Math.max(nextActionAt, Date.now() + Cleaner.itemRetryRest))) {
+            if (!cancelled) await reportLostView();
+            return;
+          }
+          for (const key of needsRetry) failures.delete(key);
+          needsRetry.clear();
+        }
+        ambiguous.clear();
+        still = 0;
+        previous = '';
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        await sleep(950);
+        continue;
+      }
       if (loading) {
         const loaded = await waitFor(() =>
           !all(primary(), '[role="progressbar"], [data-testid="spinner"]').length ||
@@ -914,20 +946,6 @@
       await ask('sectionIssue', { reason: detail });
       return;
     }
-    if (needsRetry.size || ambiguous.size) {
-      const retry = await ask('refresh', { mode: 'items' });
-      if (retry?.reloading || cancelled) return;
-    }
-    if (removed.size) {
-      await update(`${name} · Waiting to check for older items`, true);
-      if (!await waitUntil(nextActionAt)) {
-        if (!cancelled && !(refreshDue() && routeAndAccount() && await refreshTimeline())) await reportLostView();
-        return;
-      }
-      const refresh = await ask('refresh', { mode: 'tail' });
-      if (refresh?.reloading || cancelled) return;
-    }
-    if (refreshDue() && routeAndAccount() && await refreshTimeline()) return;
     if (!detail && failures.size) detail = `${failures.size} item(s) could not be verified. ${lastIssue}`.trim();
     if (!detail && ambiguous.size) detail = `${ambiguous.size} card(s) lacked a recognizable action or permalink.`;
     if (!detail && !everSawCards && !emptyTimeline()) detail = 'X did not confirm that the section is empty.';

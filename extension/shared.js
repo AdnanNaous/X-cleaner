@@ -8,12 +8,6 @@ globalThis.Cleaner = Object.freeze({
   batchRest: 45000,
   rateRest: 300000,
   itemRetryRest: 30000,
-  refreshInterval: 600000,
-  refreshActions: 40,
-  refreshDue(job) {
-    return Boolean(job.refreshAt && Date.now() >= job.refreshAt) ||
-      (job.actionsSinceRefresh || 0) >= this.refreshActions;
-  },
   automaticPace(job, success, duration = 0) {
     if (!success || duration > 8000) {
       job.successStreak = 0;
