@@ -520,6 +520,7 @@ const end = async (h, job, result = 'clear') => {
   job = await end(unreadable, job);
   assert.equal(job.section, 3);
   assert.equal(job.totals.reposts, 30);
+  assert.equal(job.results.find(result => result.section === 2).status, 'review');
   job = await unreadable.tab(job, 'hello');
   job = await unreadable.tab(job, 'sectionEnd', { result: 'review', fallback: true });
   assert.equal(job.history, true);

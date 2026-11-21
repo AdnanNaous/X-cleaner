@@ -11,12 +11,32 @@
 <body>
   <main>
     <header>
-      <img src="icons/48.png" width="36" height="36" alt="">
+      <img class="brand-icon" src="icons/48.png" width="40" height="40" alt="">
       <div><h1>X Cleaner</h1><p id="account">Detecting account…</p></div>
       <span id="status">Ready</span>
     </header>
+    <section class="activity" aria-label="Cleanup progress">
+      <div class="report">
+        <p id="message" role="status">Detecting your X account…</p>
+        <p id="elapsed" hidden></p>
+        <p id="countdown" hidden></p>
+        <div id="achievement" hidden><strong>Cleanup complete</strong><p>Selected sections rechecked.</p></div>
+        <div id="interruption" hidden>
+          <strong id="interrupt-title"></strong>
+          <p id="interrupt-reason" role="alert"></p>
+          <p>Press OK, then resume when X is ready.</p>
+          <button type="button" id="acknowledge">OK</button>
+        </div>
+      </div>
+      <dl class="stats">
+        <div><dt>Deleted</dt><dd id="deleted">0</dd></div>
+        <div><dt>Reposts</dt><dd id="reposts">0</dd></div>
+        <div><dt>Bookmarks</dt><dd id="bookmarks">0</dd></div>
+        <div><dt>Likes</dt><dd id="likes">0</dd></div>
+      </dl>
+    </section>
     <fieldset id="options">
-      <legend>Clean</legend>
+      <legend>What to clean</legend>
       <div class="options">
         <label><input type="checkbox" value="posts" checked>Posts</label>
         <label><input type="checkbox" value="reposts" checked>Reposts</label>
@@ -25,32 +45,18 @@
         <label><input type="checkbox" value="likes" checked>Likes</label>
       </div>
       <div class="speed">
-        <label for="pace-mode">Speed</label>
+        <label for="pace-mode">Delay</label>
         <select id="pace-mode"><option value="auto" selected>Automatic</option><option value="manual">Custom delay</option></select>
         <span id="manual-pace" hidden><input id="pace" type="number" inputmode="decimal" min="0" max="3600" step="0.001" value="15" required aria-label="Delay between actions in seconds" aria-describedby="pace-error"> sec</span>
       </div>
       <p id="pace-error" hidden>Enter 0–3600 seconds.</p>
     </fieldset>
-    <button type="button" id="start" disabled>Clean everything</button>
-    <p id="warning">Permanently removes the selected activity.</p>
-    <div id="achievement" hidden><strong>Cleanup complete</strong><p>Selected sections rechecked.</p></div>
-    <div id="interruption" hidden>
-      <strong id="interrupt-title"></strong>
-      <p id="interrupt-reason" role="alert"></p>
-      <p>Press OK, then resume when X is ready.</p>
-      <button type="button" id="acknowledge">OK</button>
+    <div class="action">
+      <button type="button" id="start" disabled>Clean everything</button>
+      <p id="warning">Permanently removes the selected activity.</p>
     </div>
-    <p id="message" role="status">Ready to clean your X account.</p>
-    <p id="elapsed" hidden></p>
-    <p id="countdown" hidden></p>
-    <dl class="stats">
-      <div><dd id="deleted">0</dd><dt>Deleted</dt></div>
-      <div><dd id="reposts">0</dd><dt>Reposts</dt></div>
-      <div><dd id="bookmarks">0</dd><dt>Bookmarks</dt></div>
-      <div><dd id="likes">0</dd><dt>Likes</dt></div>
-    </dl>
     <details id="details">
-      <summary>Details <span id="detail-counts"></span></summary>
+      <summary>Activity details <span id="detail-counts"></span></summary>
       <div class="secondary-stats"><span><b id="skipped">0</b> ignored</span><span><b id="errors">0</b> errors</span></div>
       <p id="problem" hidden></p>
       <a id="last-item" hidden target="_blank" rel="noreferrer">Open last attempted item</a>

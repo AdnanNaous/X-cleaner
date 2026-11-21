@@ -45,14 +45,15 @@ function harness() {
   document.find.set('[data-testid="primaryColumn"]', [primary]);
   const calls = [];
   let now = 0;
+  let tick;
   document.scrollingElement = { scrollTop: 0, scrollHeight: 600, clientHeight: 600 };
   const chrome = { runtime: { onMessage: { addListener() {} }, sendMessage: async message => {
-    calls.push(message);
+    calls.push({ ...message, time: now });
     return { result: ['begin', 'check'].includes(message.type) ? { allowed: true } : null };
   } } };
   const sandbox = { URL, chrome, document, location, Date: { now: () => now },
     window: { innerHeight: 600, scrollTo() {}, scrollBy() {} },
-    setTimeout: (resolve, ms) => { now += ms; resolve(); } };
+    setTimeout: (resolve, ms) => { now += ms; tick?.(now); resolve(); } };
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync('extension/shared.js', 'utf8'), context);
   const source = fs.readFileSync('extension/cleaner.js', 'utf8').split('  run().catch')[0];
@@ -80,7 +81,7 @@ function harness() {
     primary.find.set(ARTICLE, [article]);
     return { article, button };
   }
-  return { api, document, primary, profile, calls, job, card, location };
+  return { api, document, primary, profile, calls, job, card, location, onTick(callback) { tick = callback; } };
 }
 
 (async () => {
@@ -108,6 +109,44 @@ function harness() {
   };
   assert.equal(await selection.api.prepareView(), true);
   assert.equal(selected, 1);
+  const pending = harness();
+  pending.job(2, [2]);
+  const routeTab = new Element('Reposts', pending.location.href);
+  routeTab.onclick = () => assert.fail('A route-matching tab without aria-selected should not be clicked again');
+  let revealed = 0;
+  routeTab.scrollIntoView = () => { revealed++; };
+  pending.primary.find.set('[role="tab"], [role="tablist"] a', [routeTab]);
+  pending.primary.find.set(EMPTY, [new Element('No posts yet')]);
+  const progressSelector = '[role="progressbar"], [data-testid="spinner"], [aria-busy="true"]';
+  pending.primary.find.set(progressSelector, [new Element()]);
+  let target;
+  pending.onTick(now => {
+    if (now >= 23000 && !target) {
+      target = pending.card('other', 990, 'unretweet');
+      target.button.onclick = () => {
+        target.article.isConnected = false;
+        pending.primary.find.set(ARTICLE, []);
+        pending.primary.find.set(EMPTY, [new Element('No reposts yet')]);
+      };
+    }
+    if (now >= 25000) pending.primary.find.delete(progressSelector);
+  });
+  await pending.api.scan();
+  assert.equal(revealed, 1);
+  assert.ok(pending.calls.some(call => call.type === 'progress' && /Waiting for X to load/.test(call.text)));
+  assert.ok(pending.calls.find(call => call.type === 'begin').time >= 26600);
+  assert.equal(pending.calls.find(call => call.type === 'settled').ok, true);
+  assert.equal(pending.calls.at(-1).result, 'clear');
+
+  const blank = harness();
+  blank.job(2, [2]);
+  blank.primary.find.set(EMPTY, [new Element('No posts yet')]);
+  await blank.api.scan();
+  assert.equal(blank.calls.some(call => call.type === 'begin' || call.type === 'sectionEnd'), false);
+  assert.equal(blank.calls.at(-1).type, 'sectionIssue');
+  assert.ok(blank.calls.at(-1).time >= 65000);
+  console.log('PASS blank Reposts waits, reveals the timeline, ignores a Posts empty message and acts only after usable cards settle');
+
   const generic = harness();
   generic.document.find.set(NOTICES, [new Element('Something went wrong. Try again later.')]);
   assert.equal(generic.api.rateLimited(), false);

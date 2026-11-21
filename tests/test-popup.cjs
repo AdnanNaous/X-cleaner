@@ -33,7 +33,7 @@ const context = vm.createContext({
   }
 });
 const markup = fs.readFileSync('extension/popup.html', 'utf8');
-assert.deepEqual([...markup.matchAll(/<button[^>]+id="([^"]+)"/g)].map(match => match[1]), ['start', 'acknowledge']);
+assert.deepEqual([...markup.matchAll(/<button[^>]+id="([^"]+)"/g)].map(match => match[1]).sort(), ['acknowledge', 'start']);
 for (const name of ['shared', 'popup']) vm.runInContext(fs.readFileSync('extension/' + name + '.js', 'utf8'), context);
 const snapshot = {
   id: 'current', handle: 'sample_user', revision: 8, status: 'running', section: 0, pass: 1, selected: [1, 0],
@@ -41,6 +41,7 @@ const snapshot = {
 };
 onChange({ report: { newValue: snapshot } }, 'local');
 assert.equal(node('deleted').textContent, '1');
+assert.equal(node('options').hidden, true);
 responses.status.resolve({ result: { ...snapshot, id: 'old', revision: 7, totals: { deleted: 0 }, message: 'Waiting…' } });
 responses.detect.resolve({ result: { handle: 'sample_user' } });
 setImmediate(async () => {

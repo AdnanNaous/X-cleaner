@@ -6,18 +6,20 @@
 
 Remove your X posts, reposts, replies, bookmarks, and likes with one button.
 
-[![Click to download](./docs/images/download-en.png)](./X-Cleaner-1.7.3.zip?raw=true)
+[![Click to download](./docs/images/download-en.png)](https://raw.githubusercontent.com/AdnanNaous/X-cleaner/refs/heads/main/X-Cleaner-1.7.4.zip)
 
-**1.7.3 · Desktop Chromium extension**
+[Download ZIP directly](https://raw.githubusercontent.com/AdnanNaous/X-cleaner/refs/heads/main/X-Cleaner-1.7.4.zip)
+
+**1.7.4 · Desktop Chromium extension**
 
 1. Download the ZIP and **Extract All**.
 2. Open **Extensions** (Chrome uses `chrome://extensions`) and turn on **Developer mode**.
-3. Click **Load unpacked** and select the entire extracted **X-Cleaner-1.7.3** folder.
+3. Click **Load unpacked** and select the entire extracted **X-Cleaner-1.7.4** folder.
 4. Sign in at [x.com](https://x.com), open **X Cleaner**, check your account, and click **Clean everything**.
 
 The order is **Posts → Reposts → Replies → Bookmarks → Likes**. Uncheck anything you want to keep. **Automatic** adjusts the wait as X responds. Keep the cleanup tab open. The same button stops or resumes cleanup.
 
-Deferred items are rechecked on the same page. If the timeline stops loading, X Cleaner can reload it or try an alternate route. Persistent failures remain under **Details** while other sections continue. **Retry cleanup** checks them again. Explicit X restrictions pause the run and require acknowledgement.
+Reposts waits for readable cards or a confirmed empty timeline. Deferred items are rechecked on the same page. If the timeline stops loading, X Cleaner can reload it or try an alternate route. Persistent failures remain under **Activity details** while other sections continue. **Retry cleanup** checks them again. Explicit X restrictions pause the run and require acknowledgement.
 
 **Update** by extracting the new ZIP over your existing extension folder, clicking **Reload** on its extension card, then refreshing your X tab.
 

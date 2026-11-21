@@ -67,6 +67,8 @@ function render() {
   const resume = same && sameAccount && !current?.preview && ['paused', 'review'].includes(current?.status);
   get('status').textContent = statuses[report?.status] || 'Ready';
   get('options').disabled = active || busy;
+  get('options').hidden = active || Boolean(report?.alertPending);
+  get('status').setAttribute('data-state', report?.status || 'ready');
   const invalidPace = enteredPace() === null;
   get('manual-pace').hidden = paceMode.value === 'auto';
   paceInput.setAttribute('aria-invalid', String(invalidPace));
@@ -77,6 +79,7 @@ function render() {
   get('start').textContent = action === 'stop' ? 'Stop cleanup' : action === 'openX' ? 'Open X'
     : resume ? (current.status === 'review' ? 'Retry cleanup' : 'Continue cleanup')
       : selected.length === Cleaner.sections.length ? 'Clean everything' : 'Clean selected';
+  get('warning').hidden = action === 'acknowledge';
   get('warning').textContent = active ? 'Keep the cleanup tab open.' : 'Permanently removes the selected activity.';
   get('achievement').hidden = report?.status !== 'finished';
 
@@ -87,7 +90,7 @@ function render() {
   get('interrupt-title').textContent = 'Cleanup stopped';
   get('interrupt-reason').textContent = report?.alertPending ? message : '';
   get('acknowledge').disabled = busy;
-  get('message').hidden = Boolean(report?.alertPending);
+  get('message').hidden = Boolean(report?.alertPending) || report?.status === 'finished';
   const problem = get('problem');
   const latestIssue = report?.problem;
   problem.hidden = !latestIssue?.text;

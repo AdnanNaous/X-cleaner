@@ -2,6 +2,9 @@
 
 (() => {
   const ARTICLE = 'article[data-testid="tweet"]';
+  const TIMELINE_LOADING = '[role="progressbar"], [data-testid="spinner"], [aria-busy="true"]';
+  const PROFILE_TABS = '[role="tab"], [role="tablist"] a';
+  const REPOST_WAIT = 65000;
   const AUTHOR = '[data-testid="User-Name"], [data-testid="UserName"]';
   const PROFILE_LINK = [
     'a[data-testid="AppTabBar_Profile_Link"]',
@@ -143,7 +146,14 @@
     if (!atSection()) return false;
     if (job.section === 2) {
       const tab = getRepostTab();
-      if (tab) return selectedTab(tab);
+      if (tab && !selectedTab(tab)) {
+        const explicitlyInactive = tab.getAttribute('aria-selected') === 'false' ||
+          tab.getAttribute('aria-current') === 'false';
+        const tabs = tab.closest('[role="tablist"]') || primary();
+        if (explicitlyInactive || all(tabs, PROFILE_TABS).some(other => other !== tab && selectedTab(other))) {
+          return false;
+        }
+      }
     }
     if (!currentHistory()) return true;
     const tab = getHistoryTab();
@@ -160,7 +170,7 @@
   function getRepostTab() {
     const expected = Cleaner.route(Cleaner.sectionUrl(job.repostProfile ? 0 : 2, job.handle));
     const labels = new Set(job.repostProfile ? ['posts', 'المنشورات'] : ['reposts', 'إعادات النشر']);
-    const tabs = all(primary(), '[role="tab"], [role="tablist"] a').filter(tab => !tab.closest(ARTICLE));
+    const tabs = all(primary(), PROFILE_TABS).filter(tab => !tab.closest(ARTICLE));
     const linked = tabs.filter(tab => Cleaner.route(tab.href) === expected);
     const matches = linked.length ? linked : tabs.filter(tab => labelled(tab, labels));
     return matches.length === 1 ? matches[0] : null;
@@ -169,10 +179,15 @@
   async function prepareView() {
     if (job.section === 2 && atSection()) {
       const tab = getRepostTab();
-      if (tab && !selectedTab(tab) && account() === 'verified' && !cancelled) {
-        tab.click();
-        return Boolean(await waitFor(() => correctView() || !atSection(), 8000)) && correctView();
+      if (tab && !correctView() && account() === 'verified' && !cancelled) {
+        // The profile can briefly render the old tab during hydration.
+        await waitFor(() => correctView() || !atSection() || restriction(), 2200);
+        if (!correctView() && atSection() && account() === 'verified' && !restriction() && !cancelled) {
+          getRepostTab()?.click();
+        }
       }
+      // Reposts qualifies the route and the selected view together in waitForReposts.
+      return atSection();
     }
     if (!currentHistory()) return correctView();
     if (correctView()) return true;
@@ -344,13 +359,63 @@
       all(primary(), '[data-testid="retry"]').length > 0;
   }
 
+  function timelineLoading() {
+    return all(primary(), TIMELINE_LOADING).some(node => !node.closest(ARTICLE));
+  }
+
   function emptyTimeline() {
     return all(primary(), '[data-testid="emptyState"], [data-testid="empty_state_header_text"]')
       .some(node => {
         const label = normalize(node.innerText);
+        if (job.section === 2 && !job.repostProfile) {
+          return ['no reposts yet', 'hasn’t reposted', "hasn't reposted", 'when you repost',
+            'لا توجد إعادات نشر'].some(text => label.includes(text));
+        }
         return emptyLabels.some(text => label.includes(text)) ||
           (job.replySearch && /^(?:no results for|no results found|لا توجد نتائج|لم يتم العثور على نتائج)/.test(label));
       });
+  }
+
+  function repostViewReady() {
+    return correctView() && !timelineLoading() &&
+      (all(primary(), ARTICLE).some(card => parseCard(card)) || emptyTimeline());
+  }
+
+  async function waitForReposts() {
+    const started = Date.now();
+    let usableSince;
+    let lastReport = -5000;
+    let revealed = false;
+    let retriedAt;
+    while (!cancelled && Date.now() - started < REPOST_WAIT) {
+      if (!atSection() || account() !== 'verified' || restriction()) return 'changed';
+      const elapsed = Date.now() - started;
+      const viewError = correctView() && !timelineLoading() && timelineError();
+      if (viewError && elapsed >= 4000 && (retriedAt === undefined || elapsed - retriedAt >= 8000)) {
+        const retry = unique(primary(), '[data-testid="retry"]');
+        if (retriedAt !== undefined || !enabled(retry) || retry.closest(ARTICLE)) return 'error';
+        retry.click();
+        retriedAt = elapsed;
+      }
+      if (!viewError && repostViewReady()) {
+        usableSince ??= Date.now();
+        if (Date.now() - usableSince >= 1600) return 'ready';
+      } else {
+        usableSince = undefined;
+        if (!revealed && elapsed >= 2000) {
+          revealed = true;
+          const tab = getRepostTab();
+          if (tab) tab.scrollIntoView({ block: 'center', behavior: 'instant' });
+          else window.scrollBy({ top: window.innerHeight * 0.55, behavior: 'instant' });
+        }
+      }
+      if (elapsed - lastReport >= 5000) {
+        lastReport = elapsed;
+        await ask('progress', { text: `Reposts · Waiting for X to load (${Math.floor(elapsed / 1000)}s)` });
+      }
+      await sleep(300);
+    }
+    return cancelled ? 'changed' : 'timeout';
   }
 
   function remainingPostCount() {
@@ -372,18 +437,28 @@
     const root = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = `
-      :host {position:fixed; inset:auto auto 14px 14px; z-index:2147483647; color-scheme:dark}
-      aside {box-sizing:border-box; width:min(290px,calc(100vw - 28px)); background:#000; color:#fff; border:1px solid #777; border-radius:7px; padding:10px 12px; box-shadow:0 6px 18px #0008; font:11px/1.4 system-ui,sans-serif}
-      header {display:flex; justify-content:space-between; align-items:center; gap:10px}
-      strong {font-size:13px} p {margin:5px 0; overflow-wrap:anywhere} small {color:#c1c1c1}
-      button {font:600 12px system-ui,sans-serif; background:#fff; color:#000; padding:7px 12px; border:0; border-radius:5px; cursor:pointer}
+      :host {position:fixed; inset:auto auto 16px 16px; z-index:2147483647; color-scheme:dark}
+      aside {box-sizing:border-box; width:min(312px,calc(100vw - 32px)); background:#111e; color:#fff;
+        border:1px solid #666; border-radius:19px; overflow:hidden; box-shadow:0 8px 28px #0008;
+        backdrop-filter:blur(18px); font:12px/1.45 system-ui,sans-serif}
+      header {display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid #fff2}
+      .brand {display:flex; align-items:center; gap:9px; min-width:0}
+      .mark {display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:7px;
+        background:#eee; color:#151515; font:700 17px/1 system-ui,sans-serif}
+      strong {display:block; font-size:13px; line-height:1.25}
+      small {color:#c8c8c8}
+      .body {padding:9px 12px}
+      p {margin:0; overflow-wrap:anywhere}
+      button {font:650 12px system-ui,sans-serif; background:#f0f0f0; color:#111; padding:6px 11px;
+        border:0; min-height:30px; border-radius:9px; cursor:pointer}
+      button:hover {background:#fff}
       button:disabled {opacity:.55; cursor:default}
       button:focus-visible {outline:2px solid #fff; outline-offset:3px}
-      aside[data-done] {border-color:#fff}
-      aside[data-alert] {border:2px solid #fff}
+      aside[data-done], aside[data-alert] {border-color:#ddd}
       small[hidden] {display:none}
-      #elapsed {display:block; margin:0 0 7px; font-variant-numeric:tabular-nums}
-      #elapsed[hidden] {display:none}
+      #elapsed {display:block; margin-top:4px; font-variant-numeric:tabular-nums}
+      .counts {display:block; background:#ffffff0b; border-top:1px solid #ffffff18; padding:7px 12px; font-variant-numeric:tabular-nums}
+      @media (prefers-reduced-transparency:reduce) {aside {background:#111; backdrop-filter:none}}
     `;
     const box = document.createElement('aside');
     box.setAttribute('aria-label', 'X Cleaner');
@@ -402,8 +477,21 @@
       if (!elapsed.hidden) elapsed.textContent = 'Paused for ' + Cleaner.elapsedSince(panel.pausedAt);
     };
     let timer;
-    header.append(title, control);
-    box.append(header, route, description, elapsed, counts);
+    const logo = document.createElement('span');
+    logo.className = 'mark';
+    logo.textContent = 'X';
+    logo.setAttribute('aria-hidden', 'true');
+    const identity = document.createElement('div');
+    identity.append(title, route);
+    const brand = document.createElement('div');
+    brand.className = 'brand';
+    brand.append(logo, identity);
+    const body = document.createElement('div');
+    body.className = 'body';
+    body.append(description, elapsed);
+    counts.className = 'counts';
+    header.append(brand, control);
+    box.append(header, body, counts);
     root.append(style, box);
     document.body.append(host);
     panelHost = host;
@@ -442,7 +530,7 @@
       const { deleted, reposts, bookmarks, likes, skipped, errors } = state.totals;
       const bookmarkCount = state.bookmarksCleared ? 'All' : bookmarks;
       counts.textContent = `${deleted} deleted · ${reposts} reposts · ${bookmarkCount} bookmarks · ${likes} likes` +
-        (errors ? ` · ${errors} errors` : '');
+        (skipped ? ` · ${skipped} ignored` : '') + (errors ? ` · ${errors} errors` : '');
     };
   }
 
@@ -490,7 +578,7 @@
     const matchingCards = () => cardsInView().map(parseCard).filter(matchesTarget);
     const timelineReadable = () => cardsInView().some(card => parseCard(card)) || emptyTimeline();
     const repostDisappeared = () => !job.repostProfile && !visible(item.card) &&
-      !matchingCards().length && timelineReadable();
+      !matchingCards().length && !timelineLoading() && timelineReadable();
     let deleteBaseline;
     let confirmation;
     let openedMenu = false;
@@ -528,7 +616,7 @@
         const repostButton = toggle(item.card, 'repost');
         if (!enabled(repostButton)) return fail('The repost control was missing or disabled.');
         const approval = await ask('check', { url: item.url });
-        if (cancelled || !approval?.allowed || !routeAndAccount() || !validCard(item) ||
+        if (cancelled || !approval?.allowed || !routeAndAccount() || !repostViewReady() || !validCard(item) ||
             toggle(item.card, 'repost') !== repostButton || !enabled(repostButton)) {
           return fail('The repost changed before its control could be used.');
         }
@@ -756,7 +844,7 @@
       if (!cancelled) await reportLostView();
       return;
     }
-    const ready = await waitFor(() => {
+    const ready = job.section === 2 || await waitFor(() => {
       const column = primary();
       return all(column, ARTICLE).length || emptyTimeline() || timelineError() || rateLimited();
     }, 18000);
@@ -803,11 +891,28 @@
     }
 
     window.scrollTo({ top: 0, behavior: 'instant' });
+    let checkReposts = job.section === 2;
     while (!cancelled) {
       const blocked = restriction();
       if (blocked) {
         await ask('pause', blocked);
         return;
+      }
+      if (job.section === 2 && (checkReposts || !repostViewReady())) {
+        const readiness = await waitForReposts();
+        if (cancelled) return;
+        if (readiness === 'changed') {
+          await reportLostView();
+          return;
+        }
+        if (readiness !== 'ready') {
+          detail = readiness === 'error' ? 'X reported an error loading Reposts.'
+            : 'X did not show repost cards or confirm the timeline was empty after 65 seconds.';
+          break;
+        }
+        previous = '';
+        still = 0;
+        checkReposts = false;
       }
       if (!routeAndAccount()) {
         await reportLostView();
@@ -855,7 +960,8 @@
       if (next) {
         if (nextActionAt > Date.now()) {
           await update(`${name} · Waiting before the next action`, true);
-          if (!await waitUntil(nextActionAt)) continue;
+          await waitUntil(nextActionAt);
+          checkReposts = job.section === 2;
           continue;
         }
         const verbs = { delete: 'Deleting', repost: 'Undoing repost', bookmark: 'Removing bookmark', like: 'Removing like' };

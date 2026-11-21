@@ -177,6 +177,7 @@ async function openSection(job, { repostProfile = false } = {}) {
   job.history = false;
   job.replySearch = false;
   job.repostProfile = repostProfile;
+  job.repostIssue = repostProfile ? job.repostIssue : null;
   job.skippedHere = 0;
   job.batchActions = 0;
   job.recoveries = 0;
@@ -218,8 +219,9 @@ async function openReplySearch(job) {
   await navigate(job);
 }
 
-async function openRepostProfile(job) {
+async function openRepostProfile(job, reason) {
   job.repostProfile = true;
+  job.repostIssue = String(reason || 'X did not confirm the Reposts timeline.').slice(0, 140);
   job.documentId = null;
   job.recoveries = 0;
   job.redirects = 0;
@@ -235,7 +237,7 @@ async function openRepostProfile(job) {
 async function unavailableSection(job, reason) {
   recordInterruptedAction(job, 'The last action could not be verified before switching the recovery route.');
   if (job.section === 2 && !job.repostProfile) {
-    await openRepostProfile(job);
+    await openRepostProfile(job, reason);
     return;
   }
   if ((job.section === 3 || job.section === 4) && !job.history) {
@@ -320,7 +322,7 @@ async function start(old, selection, pace, accountHandle, paceMode) {
     pace, paceMode, successStreak: 0, watchdogRecoveries: 0,
     changes: resume ? old.changes : 0, results: resume ? old.results : [],
     totals: keep ? old.totals : { deleted: 0, reposts: 0, bookmarks: 0, likes: 0, skipped: 0, errors: 0 },
-    message: '', problem: keep ? old.problem : null
+    message: '', problem: keep ? old.problem : null, repostIssue: resume ? old.repostIssue : null
   };
   if (old?.handle === accountHandle && old.tabId === tab.id) {
     job.originalAutoDiscardable = old.originalAutoDiscardable;
@@ -333,10 +335,12 @@ async function finishSection(job, message) {
   job.results.push({
     section: job.section,
     name: sections[job.section].name,
-    status: message.result === 'clear' ? 'clear' : 'review',
-    detail: String(message.detail || '').slice(0, 250)
+    status: message.result === 'clear' && !job.repostIssue ? 'clear' : 'review',
+    detail: String(job.repostIssue
+      ? `${job.repostIssue} Profile fallback: ${message.detail || 'scan ended.'}`
+      : message.detail || '').slice(0, 250)
   });
-  addEvent(job, `${sections[job.section].name} · ${message.result === 'clear' ? 'Scanned' : 'Needs review'}`);
+  addEvent(job, `${sections[job.section].name} · ${job.results.at(-1).status === 'clear' ? 'Scanned' : 'Needs review'}`);
   const next = job.selected[job.selected.indexOf(job.section) + 1];
   if (next !== undefined) {
     job.section = next;
@@ -584,7 +588,7 @@ async function handle(message, sender) {
   }
   if (message.type === 'sectionEnd' && !job.pending) {
     if (job.section === 2 && !job.repostProfile && message.result !== 'clear') {
-      await openRepostProfile(job);
+      await openRepostProfile(job, message.detail);
       return job;
     }
     if (job.section === 1 && !job.replySearch && message.checkReplySearch === true) {
